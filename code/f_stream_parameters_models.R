@@ -57,7 +57,7 @@ SelectFeatures <- function(train, features, resp_var, seed){
   set.seed(seed)
   vars_selection = data.frame()
   for (feat in features){
-    form_feats = paste0(resp_var, " ~ s(latitude, longitude, bs='sos', m=1, k=-1) + s(", feat,", k=3, bs='ts')", collapse = '')
+    form_feats = paste0(resp_var, " ~ s(latitude, longitude, bs='sos', m=1, k=-1) + s(", feat,", k=5, bs='ts')", collapse = '')
     model_selection = bam(data = train, formula = eval(parse(text=form_feats)))
     summary_p = summary(model_selection)$s.pv[2]
     vars_selection = rbind(vars_selection, data.frame(Feature=feat, log_p=-log(summary_p)))}
@@ -70,9 +70,9 @@ CreateModel <- function(train, features, resp_var, n){
   feat_selected = SelectFeatures(train, features, resp_var, n)
 
   form_final = paste0(resp_var," ~ s(latitude, longitude, bs='sos', m=1, k=-1) + s(",
-                      feat_selected[1], ", k=3, bs='ts') + s(", 
-                      feat_selected[2], ", k=3, bs='ts') + s(", 
-                      feat_selected[3], ", k=3, bs='ts')",  collapse = '')
+                      feat_selected[1], ", k=5, bs='ts') + s(", 
+                      feat_selected[2], ", k=5, bs='ts') + s(", 
+                      feat_selected[3], ", k=5, bs='ts')",  collapse = '')
   
   # Randomly select one sample for each GFS
   train_n = train[train$fold != n,]
