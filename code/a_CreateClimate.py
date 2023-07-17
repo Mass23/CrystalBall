@@ -20,7 +20,7 @@ vars_offsets = {var:(-273.15 if (var in offsets_temp) else 0) for var in variabl
 
 
 def LoadStreamData():
-    stream_data = pd.read_csv('../data/raw/stream/nomis-20230320-0855-db.csv')
+    stream_data = pd.read_csv('data/raw/stream/nomis-20230320-0855-db.csv')
     stream_data = stream_data[['patch', 'date [DD.MM.YYYY]','lat_sp [DD]','lon_sp [DD]']]
     stream_data['Sample'] = stream_data['patch'].apply(lambda x: '_'.join(x.split('_')[0:2]))
     stream_data.pop('patch')
@@ -98,6 +98,7 @@ def GatherData(stream_data):
     institutions = ['UKESM1-0-LL','GFDL-ESM4','IPSL-CM6A-LR','MPI-ESM1-2-HR','MRI-ESM2-0']
 
     for scenario in ['ssp126','ssp370','ssp585']:
+        print(scenario)
         scenario_df_base = pd.DataFrame()
         scenario_df_base['Sample'] = stream_data['Sample']
         scenario_df_future = pd.DataFrame()
@@ -137,13 +138,13 @@ def GatherData(stream_data):
                     var_df_future = pd.concat([var_df_future, data_future], axis=1)
             scenario_df_base[var] = var_df_base.mean(axis=1)
             scenario_df_future[var] = var_df_future.mean(axis=1)
-        scenario_df_base.to_csv(f'../data/raw/climate/{scenario}_baseline_2020.csv')
-        scenario_df_future.to_csv(f'../data/raw/climate/{scenario}_future_2071_2100.csv')
+        scenario_df_base.to_csv(f'data/raw/climate/{scenario}_baseline_2020.csv')
+        scenario_df_future.to_csv(f'data/raw/climate/{scenario}_future_2071_2100.csv')
 
 def CompileData():
-    df_base_ssp126 = pd.read_csv('../data/raw/climate/ssp126_baseline_2020.csv')
-    df_base_ssp370 = pd.read_csv('../data/raw/climate/ssp370_baseline_2020.csv')
-    df_base_ssp585 = pd.read_csv('../data/raw/climate/ssp585_baseline_2020.csv')
+    df_base_ssp126 = pd.read_csv('data/raw/climate/ssp126_baseline_2020.csv')
+    df_base_ssp370 = pd.read_csv('data/raw/climate/ssp370_baseline_2020.csv')
+    df_base_ssp585 = pd.read_csv('data/raw/climate/ssp585_baseline_2020.csv')
     df_base_ssp126 = df_base_ssp126.assign(Date='Present')
     df_base_ssp370 = df_base_ssp370.assign(Date='Present')
     df_base_ssp585 = df_base_ssp585.assign(Date='Present')
@@ -151,9 +152,9 @@ def CompileData():
     df_base_ssp370 = df_base_ssp370.assign(SSP='370')
     df_base_ssp585 = df_base_ssp585.assign(SSP='585')
 
-    df_future_ssp126 = pd.read_csv('../data/raw/climate/ssp126_future_2071_2100.csv')
-    df_future_ssp370 = pd.read_csv('../data/raw/climate/ssp370_future_2071_2100.csv')
-    df_future_ssp585 = pd.read_csv('../data/raw/climate/ssp585_future_2071_2100.csv')
+    df_future_ssp126 = pd.read_csv('data/raw/climate/ssp126_future_2071_2100.csv')
+    df_future_ssp370 = pd.read_csv('data/raw/climate/ssp370_future_2071_2100.csv')
+    df_future_ssp585 = pd.read_csv('data/raw/climate/ssp585_future_2071_2100.csv')
     df_future_ssp126 = df_future_ssp126.assign(Date='Future')
     df_future_ssp370 = df_future_ssp370.assign(Date='Future')
     df_future_ssp585 = df_future_ssp585.assign(Date='Future')
@@ -165,7 +166,7 @@ def CompileData():
                             df_base_ssp370,df_future_ssp370,
                             df_base_ssp585,df_future_ssp585], axis=0)
     full_cl_meta = full_cl_meta.iloc[: , 1:]
-    full_cl_meta.to_csv('../data/raw/final_climate.csv', index=False)
+    full_cl_meta.to_csv('data/raw/final_climate.csv', index=False)
 
 def MainA():
     stream_data = LoadStreamData()
