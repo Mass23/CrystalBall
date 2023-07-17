@@ -83,7 +83,7 @@ CreateModel <- function(train, features, resp_var, n){
 
 GAMCVKFoldFeatureSelection <- function(full_data, resp_var, features, kfold){
   set.seed(23)
-  registerDoMC(8)
+  registerDoMC(10)
   
   cols_to_keep = c(resp_var, 'Date', 'Glacier', 'latitude', 'longitude', features)
   full_data = full_data %>% select(all_of(cols_to_keep)) %>% na.omit()
