@@ -18,26 +18,24 @@ PredictModelList <- function(models, new_data, seed){
   return(preds)}
   
 StackingGLM <- function(pred_data, target_data){
-  #stack_model = cv.glmnet(x = pred_data, y=target_data, family = gaussian(), alpha = 0, type.measure="mse")
-  pred_data = as.data.frame(pred_data)
-  colnames(pred_data) = c('M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9')
-  pred_data$target = target_data
-  stack_model = bam(data=pred_data, formula = target ~ s(M1, bs='ts', k=5) + s(M2, bs='ts', k=5) + s(M3, bs='ts', k=5) +
-                                                       s(M4, bs='ts', k=5) + s(M5, bs='ts', k=5) + s(M6, bs='ts', k=5) + 
-                                                       s(M7, bs='ts', k=5) + s(M8, bs='ts', k=5) + s(M9, bs='ts', k=5), family = gaussian(), select=T)
-  return(stack_model)}
+  stack_model_lasso = cv.glmnet(x = pred_data, y=target_data, family = gaussian(), alpha=1, nfolds=5, type.measure="mse")
+  stack_model_elnet = cv.glmnet(x = pred_data, y=target_data, family = gaussian(), alpha=0.5, nfolds=5, type.measure="mse")
+  stack_model_ridge = cv.glmnet(x = pred_data, y=target_data, family = gaussian(), alpha=0.5, nfolds=5, type.measure="mse")
+  error_lasso = stack_model_lasso$cvm[stack_model_lasso$lambda == stack_model_lasso$lambda.min]
+  error_elnet = stack_model_elnet$cvm[stack_model_elnet$lambda == stack_model_elnet$lambda.min]
+  error_ridge = stack_model_ridge$cvm[stack_model_ridge$lambda == stack_model_ridge$lambda.min]
+  errors = c(error_lasso, error_elnet, error_ridge)
+  if (min(errors) == errors[1]) {return(stack_model_lasso)}
+  if (min(errors) == errors[2]) {return(stack_model_elnet)}
+  if (min(errors) == errors[3]) {return(stack_model_ridge)}}
   
 PredictStackingGLM <- function(models, train_data, validate_data, train_target, seed){
   train_preds = PredictModelList(models, train_data, seed)
   stack_glm = StackingGLM(train_preds, train_target)
 
   test_preds = PredictModelList(models, validate_data, seed)
-  test_preds = as.data.frame(test_preds)
-  colnames(test_preds) = c('M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9')
-  #stack_preds = predict(stack_glm, newx = test_preds, type = 'response', s = stack_glm$lambda.min)
-  stack_preds = predict.gam(stack_glm, newdata = test_preds, newdata.guaranteed = T, type = "response")
-  #return(list(predictions=as.vector(stack_preds[,1]), model=stack_glm))}
-  return(list(predictions=as.vector(stack_preds), model=stack_glm))}
+  stack_preds = predict(stack_glm, newx = test_preds, type = 'response', s = stack_glm$lambda.min)
+  return(list(predictions=as.vector(stack_preds[,1]), model=stack_glm))}
 
 FinalPredictionsStack <- function(submodels, stack_models, new_data, kfold){
   all_stack_preds = data.frame(row.names = as.character(1:nrow(new_data)))
@@ -45,10 +43,7 @@ FinalPredictionsStack <- function(submodels, stack_models, new_data, kfold){
   for (i in 1:kfold){
     i_models = submodels[indices[[i]]]
     i_models_preds = PredictModelList(i_models, new_data, i)
-    i_models_preds = as.data.frame(i_models_preds)
-    colnames(i_models_preds) = c('M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9')
-    #stack_model_preds = as.vector(predict(stack_models[[i]], newx = i_models_preds, type = 'response', s = stack_models[[i]]$lambda.min))
-    stack_model_preds = predict.gam(stack_models[[i]], newdata = i_models_preds, newdata.guaranteed = T, type = "response")
+    stack_model_preds = as.vector(predict(stack_models[[i]], newx = i_models_preds, type = 'response', s = stack_models[[i]]$lambda.min))
     all_stack_preds = rbind(all_stack_preds, stack_model_preds)}
   all_stack_preds = as.data.frame(all_stack_preds)
   return(vapply(1:ncol(all_stack_preds), function(i) mean(all_stack_preds[,i]), FUN.VALUE = numeric(1)))}
@@ -57,7 +52,7 @@ SelectFeatures <- function(train, features, resp_var, seed){
   set.seed(seed)
   vars_selection = data.frame()
   for (feat in features){
-    form_feats = paste0(resp_var, " ~ s(latitude, longitude, bs='sos', m=1, k=-1) + s(", feat,", k=5, bs='ts')", collapse = '')
+    form_feats = paste0(resp_var, " ~ s(latitude, longitude, bs='sos', m=1, k=-1) + s(", feat,", k=3, bs='ts')", collapse = '')
     model_selection = bam(data = train, formula = eval(parse(text=form_feats)))
     summary_p = summary(model_selection)$s.pv[2]
     vars_selection = rbind(vars_selection, data.frame(Feature=feat, log_p=-log(summary_p)))}
@@ -70,9 +65,9 @@ CreateModel <- function(train, features, resp_var, n){
   feat_selected = SelectFeatures(train, features, resp_var, n)
 
   form_final = paste0(resp_var," ~ s(latitude, longitude, bs='sos', m=1, k=-1) + s(",
-                      feat_selected[1], ", k=5, bs='ts') + s(", 
-                      feat_selected[2], ", k=5, bs='ts') + s(", 
-                      feat_selected[3], ", k=5, bs='ts')",  collapse = '')
+                      feat_selected[1], ", k=3, bs='ts') + s(", 
+                      feat_selected[2], ", k=3, bs='ts') + s(", 
+                      feat_selected[3], ", k=3, bs='ts')",  collapse = '')
   
   # Randomly select one sample for each GFS
   train_n = train[train$fold != n,]
@@ -184,9 +179,11 @@ MainF <- function(){
       
       # Add predictions to the data
       predictions = FinalPredictionsStack(submodels, stack_models, pred_data, 10)
+      scenario_var_models = list(sub=submodels, stack=stack_models, scenario=scenario, variable=variable)
+      saveRDS(scenario_var_models, paste0('data/processed/',variable,'_',scenario,'.rds',collapse=''))
       pred_data[paste0('ssp', pred_data$Scenario) == scenario, paste0(variable, '_predicted')] = predictions[paste0('ssp', pred_data$Scenario) == scenario]}}
   
   pred_data = pred_data %>% arrange(Sample)
   write.csv(pred_data, 'data/processed/all_projections_3_ssps.csv', quote = F, row.names = F)
-  write.csv(perf_df, 'stats/stream_parameters_performance.csv', quote = F, row.names = F)}
+  write.csv(stats_df, 'stats/stream_parameters_performance.csv', quote = F, row.names = F)}
 
