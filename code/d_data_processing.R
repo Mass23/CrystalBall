@@ -223,6 +223,7 @@ TransformData <- function(data_raw) {
   colmins = data %>% summarise_if(is.numeric, function(x) {
     return(min(x[which(x > 0)], na.rm = T))
   }) / 2
+  saveRDS(colmins, "data/processed/colmins.rds")
   
   ####### Climatic and glaciological
   data$gl_distance = log_transform(data$gl_distance)

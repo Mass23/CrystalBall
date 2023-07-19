@@ -6,6 +6,7 @@ channels:
 dependencies:
   - r-maps
   - r-mapproj
+  - r-ggridges
   - r-ape=5.7_1
   - r-base=4.3.1
   - r-caret=6.0_94
