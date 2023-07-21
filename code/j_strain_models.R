@@ -9,19 +9,45 @@ library(matrixStats)
 library(foreach)
 library(doMC)
 
-setwd('~/Desktop/CrystalBall/code')
 set.seed(23)
+variables = c("bioclim_PC1","bioclim_PC2","bioclim_PC3","bioclim_PC4","bioclim_PC5","bioclim_PC6",
+                         "clim_tas","clim_pr","clim_scd",'clim_tasmax','clim_tasmin',
+                         "pc_water_temp_predicted","pc_turbidity_predicted","pc_conductivity_predicted","pc_ph_predicted",
+                         "nut_din_predicted", "nut_srp_predicted", "chla_predicted",
+                         "gl_distance","gl_coverage","gl_area",
+                         "min_feldspar", "min_quartz", "min_calcite", "min_clays",
+                         "elevation","latitude","longitude","slope","abs_latitude")
 
 ##################### FUNCTIONS ##################### 
 PredictModelList <- function(models, new_data, seed){
   set.seed(seed) 
-  preds = data.frame()
+  preds = data.frame(row.names = as.character(1:nrow(new_data)))
   for (i in 1:length(models)){
-    pred = predict.gam(models[[i]], newdata = new_data, newdata.guaranteed = T, type = "response")
+    pred = predict.gam(models[[i]], newdata = new_data, newdata.guaranteed = T, type = 'response')
     preds = rbind(preds, pred)}
-  preds = as.data.frame(preds)
-  return(vapply(1:ncol(preds), function(i) median(preds[,i]), FUN.VALUE = numeric(1)))}
+  preds = t(as.matrix(preds))
+  return(preds)}
+  
+StackingGLM <- function(pred_data, target_data){
+  stack_model_lasso = cv.glmnet(x = pred_data, y=target_data, family = gaussian(), alpha=1, nfolds=5, type.measure="mse")
+  stack_model_elnet = cv.glmnet(x = pred_data, y=target_data, family = gaussian(), alpha=0.5, nfolds=5, type.measure="mse")
+  stack_model_ridge = cv.glmnet(x = pred_data, y=target_data, family = gaussian(), alpha=0.5, nfolds=5, type.measure="mse")
+  error_lasso = stack_model_lasso$cvm[stack_model_lasso$lambda == stack_model_lasso$lambda.min]
+  error_elnet = stack_model_elnet$cvm[stack_model_elnet$lambda == stack_model_elnet$lambda.min]
+  error_ridge = stack_model_ridge$cvm[stack_model_ridge$lambda == stack_model_ridge$lambda.min]
+  errors = c(error_lasso, error_elnet, error_ridge)
+  if (min(errors) == errors[1]) {return(stack_model_lasso)}
+  if (min(errors) == errors[2]) {return(stack_model_elnet)}
+  if (min(errors) == errors[3]) {return(stack_model_ridge)}}
+  
+PredictStackingGLM <- function(models, train_data, validate_data, train_target, seed){
+  train_preds = PredictModelList(models, train_data, seed)
+  stack_glm = StackingGLM(train_preds, train_target)
 
+  test_preds = PredictModelList(models, validate_data, seed)
+  stack_preds = predict(stack_glm, newx = test_preds, type = 'response', s = stack_glm$lambda.min)
+  return(list(predictions=as.vector(stack_preds[,1]), model=stack_glm))}
+  
 RemoveCorrelatedVars <- function(top_50_comb, data){
   all_vars = unique(unlist(unlist(top_50_comb %>% select(-median_log_p))))
   all_corrs = cor(data %>% select(all_vars))
@@ -38,7 +64,7 @@ RemoveCorrelatedVars <- function(top_50_comb, data){
 SelectVars <- function(data, variables, seed){
   set.seed(seed) 
   vars_selection = data.frame(var=variables)
-  vars_selection$p = map_dbl(vars_selection$var, function(x) summary(gam(data = data, 
+  vars_selection$p = map_dbl(vars_selection$var, function(x) summary(bam(data = data, 
                                                                          formula = eval(parse(text=paste0('log_abundance ~ s(', x,", k=3, bs='ts')"))), 
                                                                          family = gaussian()))$s.pv)
   
@@ -50,12 +76,21 @@ SelectVars <- function(data, variables, seed){
   
   return(top_combs %>% top_n(1, median_log_p) %>% select(-median_log_p) %>% sample_n(1) %>% unlist())}
 
-FitModel <- function(train_data, variables){
-  formula = paste0('log_abundance ~ ', 's(', variables[1], ", k=3, bs='ts') + s(",
-                                             variables[2], ", k=3, bs='ts') + s(",
-                                             variables[3], ", k=3, bs='ts')", collapse = '')
-  model = gam(data = train_data, formula = eval(parse(text=formula)), family = gaussian(), select = T)
-  return(model)}
+FitModel <- function(train, variables, n){
+  set.seed(n)
+  feat_selected = SelectVars(train, variables, n)
+
+  form_final = paste0("log_abundance ~ s(",
+                      variables[1], ", k=3, bs='ts') + s(", 
+                      variables[2], ", k=3, bs='ts') + s(", 
+                      variables[3], ", k=3, bs='ts')",  collapse = '')
+  
+  # Randomly select one sample for each GFS
+  train_n = train[train$fold != n,]
+  train_n = train_n[!duplicated(train_n$Glacier),]
+  
+  model_n = bam(data = train_n, formula = eval(parse(text=form_final)), select = T)
+  return(model_n)}
 
 GAMCVKFoldFeatureSelection <- function(full_data, variables, kfold){
   set.seed(23) 
@@ -63,14 +98,14 @@ GAMCVKFoldFeatureSelection <- function(full_data, variables, kfold){
   cols_to_keep = c(variables, 'Glacier', 'log_abundance')
   present_data = full_data %>% filter(Date == 'Present') %>% na.omit()
   future_data = full_data %>% filter(Date == 'Future') %>% na.omit()
-  present_data = present_data[sample(1:nrow(present_data)),]
   
-  all_true_validate = c()
-  all_true_train = c()
-  all_pred_validate = c()
-  all_pred_train = c()
+  true_y_validate = c()
+  true_y_train = c()
+  pred_y_validate = c()
+  pred_y_train = c()
   
   all_models = list()
+  stack_models = list()
   
   glaciers = unique(present_data$Glacier)
   groups = vapply(glaciers, function(x) sample(1:kfold,1), FUN.VALUE = numeric(1))
@@ -78,40 +113,39 @@ GAMCVKFoldFeatureSelection <- function(full_data, variables, kfold){
   vars_selection_tab = c()
   
   for (kf in 1:kfold){
-    print(kf)
-    set.seed(kf) 
+    set.seed(kf)
+    present_data = present_data[sample(1:nrow(present_data)),]
     
-    train = present_data[present_data$fold != kf,] 
+    train = present_data[present_data$fold != kf,]
     validate = present_data[present_data$fold == kf,]
     train_folds = seq(1,kfold)[seq(1,kfold) != kf]
     
     vars_to_keep = SelectVars(train, variables, 23)
     vars_selection_tab = c(vars_selection_tab, vars_to_keep)
     
-    model = FitModel(train, vars_to_keep)
-    all_models[[length(all_models) + 1]] = model
+    # Build the models
+    i_models = foreach(n=1:5) %do% FitModel(train, vars_to_keep, n)
+    for (i in 1:length(i_models)){all_models[[length(all_models) + 1]] = i_models[[i]]}
+
+    # Keep predicted/observed values for validation and training sets
+    validation = PredictStackingGLM(i_models, train, validate, as.vector(train %>% pull(log_abundance)), kf)
+    pred_validate = validation$predictions
+    stack_models[[length(stack_models) + 1]] = validation$model
+    true_y_validate = c(true_y_validate, as.vector(validate %>% pull(log_abundance)))
+    pred_y_validate = c(pred_y_validate, pred_validate)
     
-    # Create predictions and gather true data
-    k_true_validate = validate %>% pull(log_abundance) %>% as.vector()
-    k_pred_validate = predict.gam(model, newdata = validate, newdata.guaranteed = T, type = "response")
-    k_true_train = train %>% pull(log_abundance) %>% as.vector()
-    k_pred_train = predict.gam(model, newdata = train, newdata.guaranteed = T, type = "response")
-    
-    # Append to the 
-    all_true_validate = c(all_true_validate, k_true_validate)
-    all_pred_validate = c(all_pred_validate, k_pred_validate)
-    all_true_train = c(all_true_train, k_true_train)
-    all_pred_train = c(all_pred_train, k_pred_train)}
+    pred_train = PredictStackingGLM(i_models, train, train, as.vector(train %>% pull(log_abundance)), kf)$predictions
+    true_y_train = c(true_y_train, as.vector(train %>% pull(log_abundance)))
+    pred_y_train = c(pred_y_train, pred_train)}
   
-  r2_train = cor(all_true_train, all_pred_train, use = "complete.obs", method = 'pearson')^2
-  r2_validate = cor(all_true_validate, all_pred_validate, use = "complete.obs", method = 'pearson')^2
+  r2_train = cor(true_y_train, pred_y_train, use = "complete.obs", method = 'pearson')^2
+  r2_validate = cor(true_y_validate, pred_y_validate, use = "complete.obs", method = 'pearson')^2
   varimp = table(vars_selection_tab)/sum(table(vars_selection_tab))*3
   
   print(paste0('Final model on train set r2: ', r2_train))
   print(paste0('Final model on validation set r2: ', r2_validate))
-  print(varimp/3)
   print(Sys.time() - t0)
-  return(list(models=all_models, r2_train=r2_train, r2_validate=r2_validate, var_imp=varimp))}
+  return(list(sub_models=all_models, stack_models=stack_models, r2_train=r2_train, r2_validate=r2_validate, var_imp=varimp))}
 
 CreateResRow <- function(model, present_data, future_data, mag_data, mean_rel_ab, half_min_non_zero, mag_idx, scenario){
   # Make model predictions
@@ -150,8 +184,8 @@ CreateResRow <- function(model, present_data, future_data, mag_data, mean_rel_ab
   return(res)}
 
 ProcessMag <- function(mag_idx, scenario, var_data_scaled, mag_data, variables){
-  present_data = var_data_scaled %>% filter(SSP == scenario, Date == 'Present')
-  future_data = var_data_scaled %>% filter(SSP == scenario, Date == 'Future')
+  present_data = var_data_scaled %>% filter(Scenario == scenario, Date == 'Present')
+  future_data = var_data_scaled %>% filter(Scenario == scenario, Date == 'Future')
   
   train_data = present_data[present_data$Sample %in% colnames(mag_data),]
   train_data$abundance = map_dbl(train_data$Sample, function(x) ifelse(x %in% colnames(mag_data), 
@@ -171,55 +205,28 @@ ProcessMag <- function(mag_idx, scenario, var_data_scaled, mag_data, variables){
   return(res)}
 
 Dataloader <- function(){
-  var_data = read.csv('../data/processed/projection_data_3_ssps.csv')
+  var_data = read.csv('data/processed/all_projections_3_ssps.csv')
   var_data = var_data %>% filter(Mountain_range != 'Alaska Range')
-  var_data$rel_elevation = var_data$elevation / abs(var_data$latitude)
   var_data$abs_latitude = abs(var_data$latitude)
-  mag_data = read.csv('../data/processed/MAGs_cov_filtered.tsv', row.names = 'X')
-  selected_variables = c("bioclim_PC1","bioclim_PC2","bioclim_PC3","bioclim_PC4","bioclim_PC5","bioclim_PC6",
-                         "clim_tas","clim_pr","clim_scd",'clim_tasmax','clim_tasmin','clim_fcf','clim_fgd',
-                         "pc_water_temp_predicted","pc_turbidity_predicted","pc_conductivity_predicted","pc_ph_predicted",
-                         "nut_din_predicted", "nut_srp_predicted", "chla_predicted",
-                         "gl_dist","gl_coverage","gl_area","gl_index",
-                         "min_feldspar", "min_quartz", "min_calcite", "min_clays",
-                         "elevation","latitude","longitude","rel_elevation","abs_latitude")
-  loaded_data = list(var_data = var_data, mag_data = mag_data, selected_variables = selected_variables)
+  mag_data = read.csv('data/processed/MAG_cov_filtered.tsv', row.names = 'X')
+  loaded_data = list(var_data = var_data, mag_data = mag_data, selected_variables = variables)
   return(loaded_data)}
 
 ##################### MAIN ##################### 
-Main4 <- function(loaded_data = NULL){
+MainJ <- function(loaded_data = NULL){
   if (is.null(loaded_data)){loaded_data = Dataloader()}
   
   var_table = loaded_data$var_data
   mag_table = loaded_data$mag_data
   variables = loaded_data$selected_variables
   
-  var_table_scaled = var_table %>% mutate_at(variables, funs(c(scale(.))))
   registerDoMC(cores = 10)
   
   set.seed(23)
-  model_out = foreach(mag = 1:nrow(mag_table), .combine = rbind) %:%
+  model_out = foreach(mag = 1:10, .combine = rbind) %:%
     foreach(scenario = c(126, 370, 585), .combine = rbind) %dopar% 
-    ProcessMag(mag, scenario, var_table_scaled, mag_table, variables)
-  write.csv(model_out, '../data/results/model_res_all_scenarios_final.csv', quote = F, row.names = F)}
+    ProcessMag(mag, scenario, var_table, mag_table, variables)
+  write.csv(model_out, 'stats/model_res_all_scenarios_final.csv', quote = F, row.names = F)
+  print(quantile(model_out %>% select(MAG, r2) %>% distinct() %>% pull(r2)))}
   
-
-loaded_data = Dataloader()
-
-var_table = loaded_data$var_data
-mag_table = loaded_data$mag_data
-variables = loaded_data$selected_variables
-
-var_table_scaled = var_table %>% mutate_at(variables, funs(c(scale(.))))
-#registerDoMC(cores = 10)
-
-#1:nrow(mag_table) .errorhandling = 'remove', 
-set.seed(23)
-test_sample = sample(1:2333, 117)
-
-model_out = foreach(mag = test_sample, .combine = rbind) %:%
-  foreach(scenario = c(370), .combine = rbind) %dopar% 
-  ProcessMag(mag, scenario, var_table_scaled, mag_table, variables)
-
-quantile(model_out %>% select(MAG, r2) %>% distinct() %>% pull(r2))
-model_out %>% group_by(vars_selection_tab) %>% summarise(imp = sum(Freq)) %>% arrange(-imp) %>% print(n=40)
+#model_out %>% group_by(vars_selection_tab) %>% summarise(imp = sum(Freq)) %>% arrange(-imp) %>% print(n=40)
