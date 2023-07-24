@@ -20,7 +20,7 @@ PredictModelList <- function(models, new_data, seed){
 StackingGLM <- function(pred_data, target_data){
   stack_model_lasso = cv.glmnet(x = pred_data, y=target_data, family = gaussian(), alpha=1, nfolds=5, type.measure="mse")
   stack_model_elnet = cv.glmnet(x = pred_data, y=target_data, family = gaussian(), alpha=0.5, nfolds=5, type.measure="mse")
-  stack_model_ridge = cv.glmnet(x = pred_data, y=target_data, family = gaussian(), alpha=0.5, nfolds=5, type.measure="mse")
+  stack_model_ridge = cv.glmnet(x = pred_data, y=target_data, family = gaussian(), alpha=0, nfolds=5, type.measure="mse")
   error_lasso = stack_model_lasso$cvm[stack_model_lasso$lambda == stack_model_lasso$lambda.min]
   error_elnet = stack_model_elnet$cvm[stack_model_elnet$lambda == stack_model_elnet$lambda.min]
   error_ridge = stack_model_ridge$cvm[stack_model_ridge$lambda == stack_model_ridge$lambda.min]
@@ -76,11 +76,11 @@ CreateModel <- function(train, features, resp_var, n){
   model_n = bam(data = train_n, formula = eval(parse(text=form_final)), select = T)
   return(model_n)}
 
-GAMCVKFoldFeatureSelection <- function(full_data, resp_var, features, kfold){
+StackedGAMCVKFoldFeatureSelection <- function(full_data, resp_var, variables, kfold){
   set.seed(23)
   registerDoMC(10)
   
-  cols_to_keep = c(resp_var, 'Date', 'Glacier', 'latitude', 'longitude', features)
+  cols_to_keep = c(resp_var, 'Date', 'Glacier', 'latitude', 'longitude', variables)
   full_data = full_data %>% select(all_of(cols_to_keep)) %>% na.omit()
   present_data = full_data %>% filter(Date == 'Present')
   
@@ -91,7 +91,6 @@ GAMCVKFoldFeatureSelection <- function(full_data, resp_var, features, kfold){
   
   all_models = list()
   stack_models = list()
-  all_r2_weights = c()
   
   glaciers = unique(present_data$Glacier)
   groups = vapply(glaciers, function(x) sample(1:kfold,1), FUN.VALUE = numeric(1))
@@ -107,7 +106,7 @@ GAMCVKFoldFeatureSelection <- function(full_data, resp_var, features, kfold){
     train_folds = seq(1,kfold)[seq(1,kfold) != i]
 
     # Build the models
-    i_models = foreach(n=train_folds) %do% CreateModel(train, features, resp_var, n)
+    i_models = foreach(n=train_folds) %do% CreateModel(train, variables, resp_var, n)
     for (i in 1:length(i_models)){all_models[[length(all_models) + 1]] = i_models[[i]]}
 
     # Keep predicted/observed values for validation and training sets
@@ -134,9 +133,9 @@ GAMCVKFoldFeatureSelection <- function(full_data, resp_var, features, kfold){
 ProcessVariable <- function(data_126, data_370, data_585, resp_var){
   if (resp_var == 'pc_water_temp'){variables = c('gl_area', 'gl_distance','gl_coverage', 'clim_tas', 'clim_pr', 'clim_scd')}
   else {variables = c('gl_area', 'gl_distance','gl_coverage', 'clim_tas', 'clim_pr', 'clim_scd', 'min_calcite', 'min_clays', 'min_feldspar', 'min_quartz')}
-  water_temp_126 = GAMCVKFoldFeatureSelection(data_126, resp_var, variables, 10)
-  water_temp_370 = GAMCVKFoldFeatureSelection(data_370, resp_var, variables, 10)
-  water_temp_585 = GAMCVKFoldFeatureSelection(data_585, resp_var, variables, 10)
+  water_temp_126 = StackedGAMCVKFoldFeatureSelection(data_126, resp_var, variables, 10)
+  water_temp_370 = StackedGAMCVKFoldFeatureSelection(data_370, resp_var, variables, 10)
+  water_temp_585 = StackedGAMCVKFoldFeatureSelection(data_585, resp_var, variables, 10)
   return(list(ssp126=water_temp_126, ssp370=water_temp_370, ssp585=water_temp_585))}
 
 CreatePredDatasets <- function(data){

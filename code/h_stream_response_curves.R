@@ -118,6 +118,6 @@ ggsave(plot = p, filename = paste0('plots/response_curves/Fig_S3_model_',var,'.p
 MainH <- function(){
   data = read.csv('data/processed/all_projections_3_ssps.csv')
   data = data %>% filter(Site == 'UP', Date == 'Present')
-  #resp_data = PlotResponseCurves(data, variables)
-  #dir.create('plots/response_curves')
+  resp_data = PlotResponseCurves(data, variables)
+  dir.create('plots/response_curves')
   CreatePlots()}

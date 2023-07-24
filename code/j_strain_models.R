@@ -19,32 +19,24 @@ variables = c("bioclim_PC1","bioclim_PC2","bioclim_PC3","bioclim_PC4","bioclim_P
                          "elevation","latitude","longitude","slope","abs_latitude")
 
 ##################### FUNCTIONS ##################### 
-PredictModelList <- function(models, new_data, seed){
+PredictModelListStrain <- function(models, new_data, seed){
   set.seed(seed) 
   preds = data.frame(row.names = as.character(1:nrow(new_data)))
   for (i in 1:length(models)){
-    pred = predict.gam(models[[i]], newdata = new_data, newdata.guaranteed = T, type = 'response')
+    pred = predict.bam(models[[i]], newdata = new_data, newdata.guaranteed = T, type = 'response')
     preds = rbind(preds, pred)}
   preds = t(as.matrix(preds))
   return(preds)}
   
-StackingGLM <- function(pred_data, target_data){
-  stack_model_lasso = cv.glmnet(x = pred_data, y=target_data, family = gaussian(), alpha=1, nfolds=5, type.measure="mse")
-  stack_model_elnet = cv.glmnet(x = pred_data, y=target_data, family = gaussian(), alpha=0.5, nfolds=5, type.measure="mse")
-  stack_model_ridge = cv.glmnet(x = pred_data, y=target_data, family = gaussian(), alpha=0.5, nfolds=5, type.measure="mse")
-  error_lasso = stack_model_lasso$cvm[stack_model_lasso$lambda == stack_model_lasso$lambda.min]
-  error_elnet = stack_model_elnet$cvm[stack_model_elnet$lambda == stack_model_elnet$lambda.min]
-  error_ridge = stack_model_ridge$cvm[stack_model_ridge$lambda == stack_model_ridge$lambda.min]
-  errors = c(error_lasso, error_elnet, error_ridge)
-  if (min(errors) == errors[1]) {return(stack_model_lasso)}
-  if (min(errors) == errors[2]) {return(stack_model_elnet)}
-  if (min(errors) == errors[3]) {return(stack_model_ridge)}}
+StackingGLMStrain <- function(pred_data, target_data){
+  stack_model_ridge = cv.glmnet(x = pred_data, y=target_data, family = gaussian(), alpha=0, nfolds=5, type.measure="mse")
+  {return(stack_model_ridge)}}
   
-PredictStackingGLM <- function(models, train_data, validate_data, train_target, seed){
-  train_preds = PredictModelList(models, train_data, seed)
-  stack_glm = StackingGLM(train_preds, train_target)
+PredictStackingGLMStrain <- function(models, train_data, validate_data, train_target, seed){
+  train_preds = PredictModelListStrain(models, train_data, seed)
+  stack_glm = StackingGLMStrain(train_preds, train_target)
 
-  test_preds = PredictModelList(models, validate_data, seed)
+  test_preds = PredictModelListStrain(models, validate_data, seed)
   stack_preds = predict(stack_glm, newx = test_preds, type = 'response', s = stack_glm$lambda.min)
   return(list(predictions=as.vector(stack_preds[,1]), model=stack_glm))}
   
@@ -61,7 +53,7 @@ RemoveCorrelatedVars <- function(top_50_comb, data){
   if (length(idx_to_remove) > 0){top_50_comb = top_50_comb[-idx_to_remove,]}
   return(top_50_comb)}
 
-SelectVars <- function(data, variables, seed){
+SelectVarsStrain <- function(data, variables, seed){
   set.seed(seed) 
   vars_selection = data.frame(var=variables)
   vars_selection$p = map_dbl(vars_selection$var, function(x) summary(bam(data = data, 
@@ -71,28 +63,37 @@ SelectVars <- function(data, variables, seed){
   vars_cor = as.data.frame(t(combn(vars_selection$var,3)))
   vars_cor$median_log_p = map_dbl(1:nrow(vars_cor), function(i) median(-log(vars_selection$p[vars_selection$var %in% vars_cor[i,]])))
   
-  top_50_comb = vars_cor %>% top_n(50, median_log_p)
-  top_combs = RemoveCorrelatedVars(top_50_comb, data)
+  top_40_comb = vars_cor %>% top_n(40, median_log_p)
+  top_combs = RemoveCorrelatedVars(top_40_comb, data)
   
   return(top_combs %>% top_n(1, median_log_p) %>% select(-median_log_p) %>% sample_n(1) %>% unlist())}
 
-FitModel <- function(train, variables, n){
+FitModelStrain <- function(train, variables, n){
   set.seed(n)
-  feat_selected = SelectVars(train, variables, n)
-
+  feat_selected = SelectVarsStrain(train, variables, n)
   form_final = paste0("log_abundance ~ s(",
                       variables[1], ", k=3, bs='ts') + s(", 
                       variables[2], ", k=3, bs='ts') + s(", 
                       variables[3], ", k=3, bs='ts')",  collapse = '')
-  
-  # Randomly select one sample for each GFS
+
   train_n = train[train$fold != n,]
   train_n = train_n[!duplicated(train_n$Glacier),]
   
   model_n = bam(data = train_n, formula = eval(parse(text=form_final)), select = T)
   return(model_n)}
 
-GAMCVKFoldFeatureSelection <- function(full_data, variables, kfold){
+FinalPredictionsStackStrain <- function(submodels, stack_models, new_data, kfold){
+  all_stack_preds = data.frame(row.names = as.character(1:nrow(new_data)))
+  indices = split(seq_along(submodels), ceiling(seq_along(submodels)/(kfold-1)))
+  for (i in 1:kfold){
+    i_models = submodels[indices[[i]]]
+    i_models_preds = PredictModelList(i_models, new_data, i)
+    stack_model_preds = as.vector(predict(stack_models[[i]], newx = i_models_preds, type = 'response', s = stack_models[[i]]$lambda.min))
+    all_stack_preds = rbind(all_stack_preds, stack_model_preds)}
+  all_stack_preds = as.data.frame(all_stack_preds)
+  return(vapply(1:ncol(all_stack_preds), function(i) mean(all_stack_preds[,i]), FUN.VALUE = numeric(1)))}
+
+StackedGAMCVKFoldFeatureSelectionStrain <- function(full_data, variables, kfold){
   set.seed(23) 
   t0 = Sys.time()
   cols_to_keep = c(variables, 'Glacier', 'log_abundance')
@@ -120,21 +121,21 @@ GAMCVKFoldFeatureSelection <- function(full_data, variables, kfold){
     validate = present_data[present_data$fold == kf,]
     train_folds = seq(1,kfold)[seq(1,kfold) != kf]
     
-    vars_to_keep = SelectVars(train, variables, 23)
+    vars_to_keep = SelectVarsStrain(train, variables, 23)
     vars_selection_tab = c(vars_selection_tab, vars_to_keep)
     
     # Build the models
-    i_models = foreach(n=1:5) %do% FitModel(train, vars_to_keep, n)
+    i_models = foreach(n=1:(kfold-1)) %do% FitModelStrain(train, vars_to_keep, n)
     for (i in 1:length(i_models)){all_models[[length(all_models) + 1]] = i_models[[i]]}
 
     # Keep predicted/observed values for validation and training sets
-    validation = PredictStackingGLM(i_models, train, validate, as.vector(train %>% pull(log_abundance)), kf)
+    validation = PredictStackingGLMStrain(i_models, train, validate, as.vector(train %>% pull(log_abundance)), kf)
     pred_validate = validation$predictions
     stack_models[[length(stack_models) + 1]] = validation$model
     true_y_validate = c(true_y_validate, as.vector(validate %>% pull(log_abundance)))
     pred_y_validate = c(pred_y_validate, pred_validate)
     
-    pred_train = PredictStackingGLM(i_models, train, train, as.vector(train %>% pull(log_abundance)), kf)$predictions
+    pred_train = PredictStackingGLMStrain(i_models, train, train, as.vector(train %>% pull(log_abundance)), kf)$predictions
     true_y_train = c(true_y_train, as.vector(train %>% pull(log_abundance)))
     pred_y_train = c(pred_y_train, pred_train)}
   
@@ -149,10 +150,10 @@ GAMCVKFoldFeatureSelection <- function(full_data, variables, kfold){
 
 CreateResRow <- function(model, present_data, future_data, mag_data, mean_rel_ab, half_min_non_zero, mag_idx, scenario){
   # Make model predictions
-  present_preds = PredictModelList(model$models, present_data[present_data$Site == 'UP',], 23)
+  present_preds = FinalPredictionsStackStrain(model$sub_models, model$stack_models, present_data[present_data$Site == 'UP',], 10)
   present_preds = exp(present_preds) - half_min_non_zero
   
-  future_preds =  PredictModelList(model$models, future_data[future_data$Site == 'UP',], 23)
+  future_preds =  FinalPredictionsStackStrain(model$sub_models, model$stack_models, future_data[future_data$Site == 'UP',], 10)
   future_preds = exp(future_preds) - half_min_non_zero
   
   # Append to data frame
@@ -184,8 +185,8 @@ CreateResRow <- function(model, present_data, future_data, mag_data, mean_rel_ab
   return(res)}
 
 ProcessMag <- function(mag_idx, scenario, var_data_scaled, mag_data, variables){
-  present_data = var_data_scaled %>% filter(Scenario == scenario, Date == 'Present')
-  future_data = var_data_scaled %>% filter(Scenario == scenario, Date == 'Future')
+  present_data = var_data_scaled %>% filter(Scenario == scenario, Date == 'Present', Site == 'UP')
+  future_data = var_data_scaled %>% filter(Scenario == scenario, Date == 'Future', Site == 'UP')
   
   train_data = present_data[present_data$Sample %in% colnames(mag_data),]
   train_data$abundance = map_dbl(train_data$Sample, function(x) ifelse(x %in% colnames(mag_data), 
@@ -200,7 +201,7 @@ ProcessMag <- function(mag_idx, scenario, var_data_scaled, mag_data, variables){
   
   # Create model
   set.seed(mag_idx+scenario)
-  model = GAMCVKFoldFeatureSelection(train_data, variables, 10)
+  model = StackedGAMCVKFoldFeatureSelectionStrain(train_data, variables, 10)
   res = CreateResRow(model, present_data, future_data, mag_data, mean_rel_ab, half_min_non_zero, mag_idx, scenario)
   return(res)}
 
@@ -223,7 +224,7 @@ MainJ <- function(loaded_data = NULL){
   registerDoMC(cores = 10)
   
   set.seed(23)
-  model_out = foreach(mag = 1:10, .combine = rbind) %:%
+  model_out = foreach(mag = 1:nrow(mag_table), .combine = rbind) %:%
     foreach(scenario = c(126, 370, 585), .combine = rbind) %dopar% 
     ProcessMag(mag, scenario, var_table, mag_table, variables)
   write.csv(model_out, 'stats/model_res_all_scenarios_final.csv', quote = F, row.names = F)
