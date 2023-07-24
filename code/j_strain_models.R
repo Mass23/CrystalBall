@@ -230,4 +230,3 @@ MainJ <- function(loaded_data = NULL){
   write.csv(model_out, 'stats/model_res_all_scenarios_final.csv', quote = F, row.names = F)
   print(quantile(model_out %>% select(MAG, r2) %>% distinct() %>% pull(r2)))}
   
-#model_out %>% group_by(vars_selection_tab) %>% summarise(imp = sum(Freq)) %>% arrange(-imp) %>% print(n=40)
