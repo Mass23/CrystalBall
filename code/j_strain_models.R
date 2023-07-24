@@ -221,7 +221,7 @@ MainJ <- function(loaded_data = NULL){
   mag_table = loaded_data$mag_data
   variables = loaded_data$selected_variables
   
-  registerDoMC(cores = 20)
+  registerDoMC(cores = 24)
   
   set.seed(23)
   model_out = foreach(mag = 1:nrow(mag_table), .combine = rbind) %:%
