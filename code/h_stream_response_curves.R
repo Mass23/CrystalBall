@@ -28,7 +28,7 @@ PredictionsStack <- function(submodels, stackmodels, new_data, covariates, kfold
 
 CreatePredictionTable <- function(resp_var, data, sub_models, stack_models, kfold){
     present_up_data = data %>% filter(Date == 'Present', Site == 'UP')
-    lat_lon_table = data.frame(latitude=data$latitude, longitude=data$longitude)
+    lat_lon_table = data %>% select(latitude, longitude) %>% distinct()
     indices = split(seq_along(sub_models), ceiling(seq_along(sub_models)/(kfold-1)))
 
     # List all covariates
@@ -79,6 +79,7 @@ PlotResponseCurves <- function(data, variables, scenario){
             predictions$Response = (predictions$pred - predictions$var_median) / predictions$var_median
             all_data = rbind(all_data, predictions)}}
 
+    all_data = all_data %>% filter(Variable == var) %>% group_by(Variable, covariate, covariate_val, Scenario) %>% summarise(Response = median(Response), se = median(se))
     write.csv(all_data, 'data/processed/stream_response_curves.csv', quote = F, row.names = F)
     return(all_data)}
 
@@ -87,7 +88,7 @@ CreatePlots <- function(){
     all_data$covariate_val = map_dbl(1:nrow(all_data), function(i) all_data[i, all_data$covariate[i]])
 
     for (var in unique(all_data$Variable)){
-    p1_data = all_data %>% filter(Variable == var) %>% group_by(Variable, covariate, covariate_val, Scenario) %>% summarise(Response = median(Response), se = median(se))
+    p1_data = all_data 
     p2_data = all_data %>% filter(Variable == var) %>% select(Variable, covariate, Scenario) %>% 
                            group_by(Variable, covariate, Scenario) %>% summarise(prop_selected = n()) 
 
