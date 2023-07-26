@@ -24,7 +24,7 @@ PredictionsStack <- function(submodels, stackmodels, new_data, covariates, kfold
     stack_model_preds = predict(stackmodels[[i]], newx = i_models_preds, type = 'response', s = stackmodels[[i]]$lambda.min, se.fit=T)
     new_data$fit = as.vector(stack_model_preds)
     all_stack_preds = rbind(all_stack_preds, new_data)}
-  return(all_stack_preds %>% group_by_at(c('latitude', 'longitude', 'covariate', covariates)) %>% summarise(pred = median(fit), se = se(fit), var_median = median(var_median)))}
+  return(all_stack_preds %>% group_by_at(c('latitude', 'longitude', 'covariate', 'covariate_val', covariates)) %>% summarise(pred = median(fit), se = se(fit), var_median = median(var_median)))}
 
 CreatePredictionTable <- function(resp_var, data, sub_models, stack_models, kfold){
     present_up_data = data %>% filter(Date == 'Present', Site == 'UP')
@@ -59,6 +59,7 @@ CreatePredictionTable <- function(resp_var, data, sub_models, stack_models, kfol
         for (other_var in other_vars){var_table[,other_var] = present_up_data %>% pull(other_var) %>% median()}
         var_table$var_median = present_up_data %>% pull(var) %>% median()
         var_table$covariate = var
+        var_table$covariate_val = var_table %>% pull(var)
         full_table = rbind(full_table, var_table)}
     return(as.data.frame(full_table))}
 
@@ -76,16 +77,16 @@ PlotResponseCurves <- function(data, variables, scenario){
             predictions = PredictionsStack(models_file$sub, models_file$stack, new_data, unique(new_data$covariate), 10)
             predictions$Variable = resp_var
             predictions$Scenario = scenario
-            predictions$Response = (predictions$pred - predictions$var_median) / predictions$var_median
             all_data = rbind(all_data, predictions)}}
 
-    all_data = all_data %>% filter(Variable == var) %>% group_by(Variable, covariate, covariate_val, Scenario) %>% summarise(Response = median(Response), se = median(se))
+    all_data = all_data %>% select(Variable, covariate, covariate_val, Scenario, var_median, pred, se) %>% 
+                            group_by(Variable, covariate, covariate_val, Scenario) %>% 
+                            summarise(pred = median(pred), se = median(se), var_median = median(var_median), covariate_val = median(covariate_val))
     write.csv(all_data, 'data/processed/stream_response_curves.csv', quote = F, row.names = F)
     return(all_data)}
 
 CreatePlots <- function(){
     all_data = read.csv('data/processed/stream_response_curves.csv')
-    all_data$covariate_val = map_dbl(1:nrow(all_data), function(i) all_data[i, all_data$covariate[i]])
 
     for (var in unique(all_data$Variable)){
     p1_data = all_data 

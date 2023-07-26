@@ -29,7 +29,7 @@ LoadModelOutput <- function(){
   taxonomy$Genus = vapply(taxonomy$classification, function(x) strsplit( strsplit(x, ';s__')[[1]][1], ';g__')[[1]][2], FUN.VALUE = character(1))
 
   changes_tab = model_out %>% select(-vars_selection_tab, -Freq, scenario) %>% distinct()
-  changes_tab$Taxonomy = map_chr(changes_tab$MAG, function(x) taxonomy$classification[taxonomy$user_genome == x])
+  changes_tab$Taxonomy = map_chr(changes_tab$MAG, function(x) ifelse(x %in% taxonomy$user_genome, taxonomy$classification[taxonomy$user_genome == x], ';'))
   return(list(changes=changes_tab, taxonomy=taxonomy))}
 
 CompareScenariosChanges <- function(changes_tab){
@@ -48,10 +48,10 @@ ProportionIncrease <- function(changes_tab){
 
   prop_increase_tab = data.frame()
   for (scenario in c(126, 370, 585)){
-    mean_incr = mean(changes_tab$Category[changes_tab$scenario == scenario] == 'Increase') # 0.5463519
-    mean_decr = mean(changes_tab$Category[changes_tab$scenario == scenario] == 'Decrease') # 0.2957082
-    mean_nots = mean(changes_tab$Category[changes_tab$scenario == scenario] == 'Not significant') # 0.1579399
-    quant = quantile(changes_tab$log2fc[changes_tab$scenario == scenario], probs = c(0.25,0.5,0.75)) # -0.3159652  0.2027560  0.8329553 
+    mean_incr = mean(changes_tab$Category[changes_tab$scenario == scenario] == 'Increase')
+    mean_decr = mean(changes_tab$Category[changes_tab$scenario == scenario] == 'Decrease')
+    mean_nots = mean(changes_tab$Category[changes_tab$scenario == scenario] == 'Not significant')
+    quant = quantile(changes_tab$log2fc[changes_tab$scenario == scenario], probs = c(0.25,0.5,0.75))
     prop_increase_tab = rbind(prop_increase_tab, data.frame(Scenario=scenario, MeanIncrease=mean_incr, MeanDecrease=mean_decr, MeanNotSignificant=mean_nots,
                                                             Q25=quant[1], Median=quant[2], Q75=quant[3]))}
   write.csv(prop_increase_tab, 'stats/proportion_increase.csv', quote=F, row.names=F)}
@@ -110,8 +110,7 @@ PhyloSignal <- function(changes_tab, tree){
       sign_tab = rbind(sign_tab, data.frame(Scenario=scenario, Variable=var, p=pval, convergence=convergence, logl=logl, logl0=logl0))}}
   write.csv(sign_tab, 'stats/phylogenetic_signal.csv', quote=F, row.names=F)}
 
-# source: Roland @ https://stackoverflow.com/questions/26285010/r-find-largest-common-substring-starting-at-the-beginning
-fun_sbst <- function(words) {
+fun_sbst <- function(words) { # source: Roland @ https://stackoverflow.com/questions/26285010/r-find-largest-common-substring-starting-at-the-beginning
     #extract substrings from length 1 to length of shortest word
     subs <- sapply(seq_len(min(nchar(words))), 
                   function(x, words) substring(words, 1, x), 

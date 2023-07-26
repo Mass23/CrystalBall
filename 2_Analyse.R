@@ -17,7 +17,7 @@ Main <- function(){
 
   source('code/h_stream_response_curves.R')
   print('Running h_stream_response_curves.R ...')
-  #MainH()
+  MainH()
 
   source('code/i_greening_analyses.R')
   print('Running i_greening_analyses.R ...')
@@ -29,7 +29,7 @@ Main <- function(){
 
   source('code/k_strain_changes_analyses.R')
   print('Running k_strain_changes_analyses.R ...')
-  MainK()
+  #MainK()
 }
 
 Main()
