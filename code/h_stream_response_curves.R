@@ -88,19 +88,18 @@ PlotResponseCurves <- function(data, variables, scenario){
 CreatePlots <- function(){
     all_data = read.csv('data/processed/stream_response_curves.csv')
 
-    for (var in unique(all_data$Variable)){
-    p1_data = all_data 
-    p2_data = all_data %>% filter(Variable == var) %>% select(Variable, covariate, Scenario) %>% 
+    p1_data = all_data
+    p2_data = all_data %>% select(Variable, covariate, Scenario) %>% 
                            group_by(Variable, covariate, Scenario) %>% summarise(prop_selected = n()) 
 
     p1 = ggplot(p1_data, aes(colour=Scenario)) + facet_grid(Variable~covariate, scales = 'free') + 
-                geom_line(aes(x=as.numeric(Response), y=Response)) + 
-                geom_line(aes(x=as.numeric(Response), y=Response-se), linetype='dashed') + 
-                geom_line(aes(x=as.numeric(Response), y=Response+se), linetype='dashed') +
+                geom_line(aes(x=as.numeric(covariate_val), y=pred)) + 
+                geom_line(aes(x=as.numeric(covariate_val), y=pred-se), linetype='dashed') + 
+                geom_line(aes(x=as.numeric(covariate_val), y=pred+se), linetype='dashed') +
                 theme_linedraw() + theme(panel.grid.major = element_blank(),
                                          panel.grid.minor = element_blank(),
                                          strip.text.y = element_text(size = 7)) +
-                ylab('response') + xlab('Smooth value') + scale_colour_manual(values = c('#AB79F5', '#1E81FC', '#F58965'))
+                ylab('Response') + xlab('Smooth value') + scale_colour_manual(values = c('#AB79F5', '#1E81FC', '#F58965'))
 
     
     p2 = ggplot(p2_data, aes(y=Scenario, x='1', fill = Scenario, alpha=prop_selected, label=round(prop_selected, 3))) + 
@@ -113,13 +112,12 @@ CreatePlots <- function(){
                                          axis.text.x = element_blank(),
                                          legend.position = 'none') + 
                 xlab('') + ylab('') + scale_fill_manual(values = c('#AB79F5', '#1E81FC', '#F58965'))
-p = ggarrange(p1, p2, ncol = 1, nrow = 2, common.legend = T)
-ggsave(plot = p, filename = paste0('plots/response_curves/Fig_S3_model_',var,'.pdf'), width = 8, height = 8)}
+#p = ggarrange(p1, p2, ncol = 1, nrow = 2, common.legend = T, heights = c(0.5,0.5))
+ggsave(plot = p1, filename = paste0('plots/Fig_S5_stream_model_response_curves.pdf'), width = 10, height = 11)
 }
 
 MainH <- function(){
   data = read.csv('data/processed/all_projections_3_ssps.csv')
   data = data %>% filter(Site == 'UP', Date == 'Present')
   resp_data = PlotResponseCurves(data, variables)
-  dir.create('plots/response_curves')
   CreatePlots()}

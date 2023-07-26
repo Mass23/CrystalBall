@@ -17,9 +17,14 @@ library(ggridges)
 LoadModelOutput <- function(){
   model_out = read.csv('stats/model_res_all_scenarios_final.csv')
   min_non_zero = min(model_out$median_future[model_out$median_future > 0])
+  model_out$wilcox_p[is.na(model_out$wilcox_p)] = 1 # NAs for models that selected only variables that do not change (0 median change, etc.)
   model_out$median_future[model_out$median_future < 0] = min_non_zero/2
   model_out$median_present[model_out$median_present < 0] = min_non_zero/2
   model_out$log2fc = log2(model_out$median_future) - log2(model_out$median_present)
+
+  model_out$Category = 'Not significant'
+  model_out$Category[(model_out$wilcox_p < 0.05) & (model_out$median_change > 0)] = 'Increase'
+  model_out$Category[(model_out$wilcox_p < 0.05) & (model_out$median_change < 0)] = 'Decrease'
 
   taxonomy = read.csv('data/raw/bacteria/gtdbtk.bac120.summary.tsv', sep='\t')
   taxonomy$Phylum = vapply(taxonomy$classification, function(x) strsplit( strsplit(x, ';c__')[[1]][1], ';p__')[[1]][2], FUN.VALUE = character(1))
@@ -30,7 +35,14 @@ LoadModelOutput <- function(){
 
   changes_tab = model_out %>% select(-vars_selection_tab, -Freq, scenario) %>% distinct()
   changes_tab$Taxonomy = map_chr(changes_tab$MAG, function(x) ifelse(x %in% taxonomy$user_genome, taxonomy$classification[taxonomy$user_genome == x], ';'))
+  write.csv(changes_tab, 'stats/changes_tab_all_scenarios_final.csv', quote=F, row.names=F)
   return(list(changes=changes_tab, taxonomy=taxonomy))}
+
+LoadTree <- function(){
+  tree = read.tree('data/raw/bacteria/treeBacteria.tree')
+  tree = midpoint.root(tree)
+  tree$tip.label = vapply(tree$tip.label, function(x) strsplit(x, '.fa')[[1]][1], FUN.VALUE = character(1))
+  return(tree)}
 
 CompareScenariosChanges <- function(changes_tab){
   for (scenario in c(126, 370, 585)){
@@ -39,13 +51,9 @@ CompareScenariosChanges <- function(changes_tab){
 
   p = ggplot(changes_tab, aes(x=median_present, y=median_future, colour=as.factor(scenario))) + geom_point(alpha=0.1) + geom_abline(slope = 1) + 
     geom_smooth(method='lm', se=F) + scale_x_log10() + scale_y_log10() + theme_linedraw()
-  ggsave(p, filename = 'plots/Fig_S5_compare_scenarios.pdf')}
+  ggsave(p, filename = 'plots/Fig_S7_compare_scenarios.pdf')}
 
 ProportionIncrease <- function(changes_tab){
-  changes_tab$Category = 'Not significant'
-  changes_tab$Category[(changes_tab$wilcox_p < 0.05) & (changes_tab$median_change > 0)] = 'Increase'
-  changes_tab$Category[(changes_tab$wilcox_p < 0.05) & (changes_tab$median_change < 0)] = 'Decrease'
-
   prop_increase_tab = data.frame()
   for (scenario in c(126, 370, 585)){
     mean_incr = mean(changes_tab$Category[changes_tab$scenario == scenario] == 'Increase')
@@ -87,14 +95,8 @@ PlotModelPerformances <- function(changes_tab){
     xlab('Mean relative abundance') + scale_y_continuous(name = bquote(""*log[2]~fold-change*""))
 
   p = ggarrange(p1, p2, nrow = 2, align = 'v', labels = c('A', 'B'), heights = c(0.333,0.666))
-  ggsave(p, filename = 'plots/Fig_S5_models_performances.pdf', width = 7, height = 5)
+  ggsave(p, filename = 'plots/Fig_S6_models_performances.pdf', width = 7, height = 5)
   write.csv(table(changes_tab$ab_cat, changes_tab$R2_cat), 'stats/table_r2_abundance.csv', quote=F, row.names=F)}
-
-LoadTree <- function(){
-  tree = read.tree('data/raw/bacteria/treeBacteria.tree')
-  tree = midpoint.root(tree)
-  tree$tip.label = vapply(tree$tip.label, function(x) strsplit(x, '.fa')[[1]][1], FUN.VALUE = character(1))
-  return(tree)}
 
 PhyloSignal <- function(changes_tab, tree){
   sign_tab = data.frame()
@@ -104,10 +106,9 @@ PhyloSignal <- function(changes_tab, tree){
       phylo_test = phylosig(tree, sub_data[,var], method = 'lambda', test=T)
       pval = phylo_test$P
       lambda = phylo_test$lambda
-      convergence = phylo_test$convergence
       logl = phylo_test$logL
       logl0 = phylo_test$logL0
-      sign_tab = rbind(sign_tab, data.frame(Scenario=scenario, Variable=var, p=pval, convergence=convergence, logl=logl, logl0=logl0))}}
+      sign_tab = rbind(sign_tab, data.frame(Scenario=scenario, Variable=var, p=pval, logl=logl, logl0=logl0))}}
   write.csv(sign_tab, 'stats/phylogenetic_signal.csv', quote=F, row.names=F)}
 
 fun_sbst <- function(words) { # source: Roland @ https://stackoverflow.com/questions/26285010/r-find-largest-common-substring-starting-at-the-beginning
@@ -152,8 +153,12 @@ MonophyleticClades <- function(tree, changes_tab, taxonomy){
     subt_res$Taxonomy[i] = fun_sbst(taxs)}
   subt_res$RelativeDepth = (1.622841 - subt_res$Depth) / 1.622841
 
-  print(paste0('Relative depth of monophyletic decreasing clades: ',quantile(subt_res$RelativeDepth)))
-  print(paste0('Number of tips of monophyletic decreasing clades: ',quantile(subt_res$Ntips)))
+  print(paste0('Number of monophyletic decreasing clades with at least 3 members: ', nrow(subt_res)))
+  print(paste0('Number of strains included: ', sum(subt_res$Ntips)))
+  print('Relative depth of monophyletic decreasing clades: ')
+  print(quantile(subt_res$RelativeDepth))
+  print('Number of tips of monophyletic decreasing clades: ')
+  print(quantile(subt_res$Ntips))
 
   write.csv(subt_res, file = 'stats/decreasing_clades.csv', quote = F)}
 
@@ -201,20 +206,22 @@ PlotTreeChanges <- function(changes_tab, tree, taxonomy){
 
 MainK <- function(){
   loaded_data = LoadModelOutput()
-  changes_tab = loaded_data$changes_tab
+  changes_tab = loaded_data$changes
   taxonomy = loaded_data$taxonomy
   tree = LoadTree()
 
   changes_tab = changes_tab[changes_tab$MAG %in% tree$tip.label,]
   tree = keep.tip(tree, tree$tip.label[tree$tip.label %in% changes_tab$MAG])
+
   changes_tab = changes_tab %>% arrange(match(MAG, tree$tip.label))
 
   # Correlation between scenarios
-  print(paste0('Correlation between RCP2.6 and 4.5: ', cor.test(changes_tab$median_future[changes_tab$scenario == 370], 
-                                                                changes_tab$median_future[changes_tab$scenario == 126], method = 'pearson')))
-  print(paste0('Correlation between RCP8.5 and 4.5: ', cor.test(changes_tab$median_future[changes_tab$scenario == 370], 
-                                                                changes_tab$median_future[changes_tab$scenario == 585], method = 'pearson')))
+  print('Correlation between RCP2.6 and 4.5: ')
+  print(cor.test(changes_tab$median_future[changes_tab$scenario == 370], changes_tab$median_future[changes_tab$scenario == 126], method = 'pearson'))
+  print('Correlation between RCP8.5 and 4.5: ')
+  print(cor.test(changes_tab$median_future[changes_tab$scenario == 370], changes_tab$median_future[changes_tab$scenario == 585], method = 'pearson'))
   
+  PlotModelPerformances(changes_tab)
   CompareScenariosChanges(changes_tab)
   ProportionIncrease(changes_tab)
   PhyloSignal(changes_tab, tree)

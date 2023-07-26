@@ -1,0 +1,20 @@
+
+Call:
+lm(formula = median_future ~ median_present, data = changes_tab %>% 
+    filter(scenario == scenario))
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-2837.8   -28.6   -13.3    -1.2  9839.6 
+
+Coefficients:
+               Estimate Std. Error t value Pr(>|t|)    
+(Intercept)    12.12385    4.34806   2.788  0.00531 ** 
+median_present  1.23935    0.00793 156.295  < 2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 338.5 on 6982 degrees of freedom
+Multiple R-squared:  0.7777,	Adjusted R-squared:  0.7777 
+F-statistic: 2.443e+04 on 1 and 6982 DF,  p-value: < 2.2e-16
+
