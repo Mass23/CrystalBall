@@ -108,7 +108,7 @@ PhyloSignal <- function(changes_tab, tree){
       lambda = phylo_test$lambda
       logl = phylo_test$logL
       logl0 = phylo_test$logL0
-      sign_tab = rbind(sign_tab, data.frame(Scenario=scenario, Variable=var, p=pval, logl=logl, logl0=logl0))}}
+      sign_tab = rbind(sign_tab, data.frame(Scenario=scenario, Variable=var, p=pval, logl=logl, logl0=logl0, lambda=lambda))}}
   write.csv(sign_tab, 'stats/phylogenetic_signal.csv', quote=F, row.names=F)}
 
 fun_sbst <- function(words) { # source: Roland @ https://stackoverflow.com/questions/26285010/r-find-largest-common-substring-starting-at-the-beginning

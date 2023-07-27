@@ -13,6 +13,7 @@ library(ggnewscale)
 library(ranger)
 library(pROC)
 library(doMC)
+#install.packages('poolr',repos = "http://cran.us.r-project.org")
 library(poolr)
 library(phytools)
 
@@ -98,7 +99,7 @@ GetTopKOs <- function(rf_out){
     top_kos = rf_clu %>% filter(pvalue < 0.01, importance >= quantile(rf_clu$importance, probs = 0.95)) %>% pull(KEGG_ko)
     sign_kos = rbind(sign_kos, data.frame(Cluster=rep(clu, length(top_kos)), KEGG_ko=as.vector(top_kos)))}
 
-  top_kos = sign_kos %>% group_by(KEGG_ko) %>% summarise(n=n()) %>% filter(n > 15) %>% arrange(-n)
+  top_kos = sign_kos %>% group_by(KEGG_ko) %>% summarise(n=n()) %>% filter(n > 10) %>% arrange(-n)
   write.csv(top_kos, 'stats/functional_top_kos.csv', quote=F, row.names=F)
   return(sign_kos)}
 #   KEGG_ko       n
@@ -118,8 +119,8 @@ GetTopKOs <- function(rf_out){
 
 FunctionalEnrichment <- function(func_tab, sign_kos){
   kegg_tab = read.csv('data/raw/bacteria/keggPathwayGood.txt', sep='\t')
-  keggs_to_keep = unique(func_tab$KEGG_ko)
-  kegg_tab_clean = kegg_tab %>% filter(ko %in% keggs_to_keep)
+  keggs_to_keep = unique(colnames(func_tab))[startsWith(unique(colnames(func_tab)), 'K')]
+  kegg_tab_clean = kegg_tab %>% filter(ko %in% keggs_to_keep) # Perform the enrichment only for the KOs in the dataset
   kegg_tab_clean$Sign = ifelse(kegg_tab_clean$ko %in% sign_kos$KEGG_ko, 1, 0)
 
   enrich_analysis = data.frame()
@@ -128,21 +129,27 @@ FunctionalEnrichment <- function(func_tab, sign_kos){
       cont_tab = table(kegg_tab_clean$Path_2 == cat, kegg_tab_clean$Sign == 1)
       ftest = fisher.test(cont_tab)
       enrich_analysis = rbind(enrich_analysis, data.frame(Path_2 = cat, p=ftest$p.value, OR=ftest$estimate))}}
-  enrich_analysis$padj_holm = p.adjust(enrich_analysis$p, method = 'holm')
-  enrich_analysis %>% filter(padj_holm < 0.05, OR > 1)
-  #                        Path_2             p         OR     padj_holm
-  # 09101 Carbohydrate metabolism  3.934662e-10  2.1794938  7.082392e-09
-  #       09102 Energy metabolism  9.376012e-05  1.8888975  1.500162e-03
-  write.csv(enrich_analysis %>% filter(padj_holm < 0.05, OR > 1), 'stats/functional_enrichment.csv', quote=F, row.names=F)
+  enrich_analysis$padj = p.adjust(enrich_analysis$p, method = 'bonferroni')
+  enrich_analysis %>% filter(padj < 0.05, OR > 1)
+  write.csv(enrich_analysis %>% filter(padj < 0.05, OR > 1), 'stats/functional_enrichment.csv', quote=F, row.names=F)}
 
-  sign_categories = enrich_analysis %>% filter(padj_holm< 0.05, OR > 1) %>% pull(Path_2)
+FunctionalGenomeStats <- function(func_tab){
+  enrich_analysis = read.csv('stats/functional_enrichment.csv')
+  sign_categories = enrich_analysis %>% filter(padj < 0.05, OR > 1) %>% pull(Path_2)
   sign_categories_df = expand.grid(MAG=func_tab$MAGs, Category=sign_categories)
 
-  mags_summary = read.csv('Data/genomeInformation.csv')
+  mags_summary = read.csv('data/raw/bacteria/genomeInformation.csv')
+  checkm2_out = read.delim('data/raw/bacteria/checkm2_final.tsv')
+  kegg_tab = read.csv('data/raw/bacteria/keggPathwayGood.txt', sep='\t')
+  spec_gen_tab = read.csv('data/raw/bacteria/spec_gen.tsv', sep='\t')
 
   sign_categories_df$Group = map_chr(sign_categories_df$MAG, function(x) ifelse(func_tab$Category[func_tab$MAGs == x] == 1, 'Decrease', 'Not significant or increase'))
+  sign_categories_df$Specialist = map_chr(sign_categories_df$MAG, function(x) ifelse(x %in% spec_gen_tab$Mags, spec_gen_tab$sign[spec_gen_tab$Mags == x], 'NA'))
+  sign_categories_df$PhyloCluster =  map_chr(sign_categories_df$MAG, function(x) unique(func_tab$PhyloCluster[func_tab$MAGs == x]))
   sign_categories_df$Count = map_int(1:nrow(sign_categories_df), function(i) sum(func_tab[func_tab$MAGs == sign_categories_df$MAG[i], colnames(func_tab) %in% kegg_tab$ko[kegg_tab$Path_2 == sign_categories_df$Category[i]]]))
   sign_categories_df$Count_total = map_int(1:nrow(sign_categories_df), function(i) sum(func_tab[func_tab$MAGs == sign_categories_df$MAG[i], startsWith(colnames(func_tab), 'K')]))
+  sign_categories_df$Count_unique = map_int(1:nrow(sign_categories_df), function(i) sum(func_tab[func_tab$MAGs == sign_categories_df$MAG[i], startsWith(colnames(func_tab), 'K')] > 0))
+  sign_categories_df$Redundancy_index = sign_categories_df$Count_total / sign_categories_df$Count_unique
   sign_categories_df$Completeness = map_dbl(sign_categories_df$MAG, function(x) checkm2_out$Completeness[checkm2_out$Name == x]/100)
   sign_categories_df$Contamination = map_dbl(sign_categories_df$MAG, function(x) checkm2_out$Contamination[checkm2_out$Name == x]/100)
   sign_categories_df$Size = map_dbl(sign_categories_df$MAG, function(x) mags_summary$length[mags_summary$genome == paste0(x, '.fa', collapse = '')])
@@ -150,6 +157,11 @@ FunctionalEnrichment <- function(func_tab, sign_kos){
   sign_categories_df$Category = as.character(sign_categories_df$Category)
   sign_categories_df$Category[sign_categories_df$Category == '09101 Carbohydrate metabolism'] = 'Carbohydrate metabolism'
   sign_categories_df$Category[sign_categories_df$Category == '09102 Energy metabolism'] = 'Energy metabolism'
+
+  write.csv(sign_categories_df, 'stats/functional_stats.csv', quote=F, row.names=F)}
+
+FunctionalModelsPlots <- function(){
+  sign_categories_df = read.csv('stats/functional_stats.csv')
 
   p1 = sign_categories_df %>% select(Completeness, Group, MAG, Count, Category) %>% distinct() %>%
     ggplot(aes(x=Completeness*100, y=Count, colour=Group)) + geom_point(alpha=0.1) + geom_smooth(method = 'lm', formula = y ~ x -1) + facet_grid(~Category) + 
@@ -165,71 +177,37 @@ FunctionalEnrichment <- function(func_tab, sign_kos){
     ylab('Genome size [mbp]') + xlab('') + scale_colour_manual(values=c('#E04D55', '#15356B')) + ylim(1, 12) +
     theme(panel.grid = element_blank(), legend.position = 'none', axis.text.x = element_blank(), axis.ticks.x = element_blank())
 
-  pb = ggarrange(p2, p3, ncol = 2, nrow = 1, labels = c('B', 'C'))
-  p = ggarrange(p1, pb, ncol = 1, nrow = 2, align = 'v', common.legend = T, legend = 'bottom', labels = c('A','',''))
-  ggsave('Plots/Fig_6_functional.pdf', width = 5, height = 5.5)
-  return(sign_categories_df)}
+  #pb = ggarrange(p2, p3, ncol = 2, nrow = 1, labels = c('B', 'C'))
+  #p = ggarrange(p1, pb, ncol = 1, nrow = 2, align = 'v', common.legend = T, legend = 'bottom', labels = c('A','',''))
+  #ggsave('plots/Fig_6_functional.pdf', width = 5, height = 5.5)
 
-FunctionalCategories <- function(sign_categories_df){
-  model_carb_met = lm(data = sign_categories_df[sign_categories_df$Category == 'Carbohydrate metabolism',], formula = Count ~ Completeness:Group -1)
-  print(summary(model_carb_met))
-  #                                               Estimate Std. Error t value Pr(>|t|)    
-  # Completeness:GroupDecrease                    0.511031   0.005193   98.41   <2e-16 ***
-  # Completeness:GroupNot significant or increase 0.569076   0.008317   68.43   <2e-16 ***
-  # Residual standard error: 15.28 on 1754 degrees of freedom
-  # Multiple R-squared:  0.8912,	Adjusted R-squared:  0.8911 
-  # F-statistic:  7184 on 2 and 1754 DF,  p-value: < 2.2e-16
-  print(predict(model_carb_met, newdata = data.frame(Group=c('Decrease','Not significant or increase'), Completeness=c(1,1)), se.fit = T))
-  # Fit : Decrease = 51.10307 +/- 0.5192785, Increase and NS = 56.90761 +/- 0.8316619
+  print('Carbohydrate metabolism:')
+  print(summary(lm(data = sign_categories_df %>% filter(Category == 'Carbohydrate metabolism'), formula = log1p(Count) ~ Completeness:Group + Contamination -1)))
+  
+  print('Energy metabolism:')
+  print(summary(lm(data = sign_categories_df %>% filter(Category == 'Energy metabolism'), formula = log1p(Count) ~ Completeness:Group + Contamination -1)))
 
-  model_en_met = lm(data = sign_categories_df[sign_categories_df$Category == 'Energy metabolism',], formula = Count ~ Completeness:Group -1)
-  print(summary(model_en_met))
-  #                                               Estimate Std. Error t value Pr(>|t|)    
-  # Completeness:GroupDecrease                    0.363233   0.004334   83.82   <2e-16 ***
-  # Completeness:GroupNot significant or increase 0.393663   0.006940   56.72   <2e-16 ***
-  # Residual standard error: 12.75 on 1754 degrees of freedom
-  # Multiple R-squared:  0.8538,	Adjusted R-squared:  0.8536 
-  # F-statistic:  5121 on 2 and 1754 DF,  p-value: < 2.2e-16
-  print(predict(model_en_met, newdata = data.frame(Group=c('Decrease','Not significant or increase'), Completeness=c(1,1)), se.fit = T))
-  # Fit : Decrease = 36.32331 +/- 0.4333552, Increase and NS = 39.36633 +/- 0.6940496
-  }
-
-FunctionalGenomeStats <- function(sign_categories_df){
   print('KO number:')
-  print(sign_categories_df %>% select(Completeness, Group, MAG, Count_total) %>% distinct() %>% group_by(Group) %>% summarise(median = median(Count_total*(1/Completeness))))
-  #   Group                       median
-  # 1 Decrease                      320.
-  # 2 Not significant or increase   335.
-  # difference in median: 15
-  print(sign_categories_df %>% select(Completeness, Group, MAG, Count_total) %>% distinct() %>% summarise(wp = wilcox.test(Count_total*(1/Completeness) ~ Group)$p.value))
-  # 4.292379e-07
+  print(summary(lm(data=sign_categories_df, formula = log1p(Count_total) ~ Completeness:Group + Contamination -1)))
 
   print('Genome length:')
-  print(sign_categories_df %>% select(Completeness, Group, MAG, Size) %>% distinct() %>% group_by(Group) %>% summarise(median = median(Size*(1/Completeness))))
-  # 1 Decrease                    3809740.
-  # 2 Not significant or increase 4187851.
-  # differece in median: 378111
-  print(sign_categories_df %>% select(Completeness, Group, MAG, Size) %>% distinct() %>% summarise(wp = wilcox.test(Size*(1/Completeness) ~ Group)$p.value))
-  # 2.244707e-07
+  print(summary(lm(data=sign_categories_df, formula = log1p(Size) ~ Completeness:Group + Contamination -1)))
 
-  # KO per mbp decrease
-  print('KO / mbp (decrease):')
-  print(median(sign_categories_df %>% filter(Group == 'Decrease') %>% mutate(density = Count_total/Size*1000000) %>% pull(density)))
-  # 84.33736
+  print('Redundancy index:')
+  print(summary(lm(data=sign_categories_df, formula = Redundancy_index ~ Completeness:Group + Contamination -1)))
 
-  # KO per mbp increase/not sign
-  print('KO / mbp (increase):')
-  print(median(sign_categories_df %>% filter(Group == 'Not significant or increase') %>% mutate(density = Count_total/Size*1000000) %>% pull(density)))
-  # 81.64844
+  print('Specialist binomial:')
+  print(summary(glm(data=sign_categories_df, formula = as.integer(Specialist == 'SPECIALIST') ~ Completeness:Group + Contamination -1, family=binomial())))
   }
 
 MainM <- function(){
   func_tab = LoadData()
-  rf_res = FunctionalRandomForests(func_tab)
+  #rf_res = FunctionalRandomForests(func_tab)
+  rf_res = read.csv('data/processed/functional_random_forests.csv')
   sign_kos = GetTopKOs(rf_res)
-  sign_categories_df = FunctionalEnrichment(func_tab, sign_kos)
-  FunctionalCategories(sign_categories_df)
-  FunctionalGenomeStats(sign_categories_df)
+  #sign_categories_df = FunctionalEnrichment(func_tab, sign_kos)
+  FunctionalGenomeStats(func_tab)
+  FunctionalModelsPlots()
   }
 
 
