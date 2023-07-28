@@ -8,13 +8,14 @@ library(reshape2)
 library(matrixStats)
 library(foreach)
 library(doMC)
+library(glmnet)
 
 set.seed(23)
 variables = c("bioclim_PC1","bioclim_PC2","bioclim_PC3","bioclim_PC4","bioclim_PC5","bioclim_PC6",
                          "clim_tas","clim_pr","clim_scd",'clim_tasmax','clim_tasmin',
                          "pc_water_temp_predicted","pc_turbidity_predicted","pc_conductivity_predicted","pc_ph_predicted",
                          "nut_din_predicted", "nut_srp_predicted", "chla_predicted",
-                         "gl_distance","gl_coverage","gl_area","gl_index"
+                         "gl_distance","gl_coverage","gl_area",
                          "min_feldspar", "min_quartz", "min_calcite", "min_clays",
                          "elevation","latitude","longitude","slope","abs_latitude")
 
@@ -63,7 +64,7 @@ SelectVarsStrain <- function(data, variables, seed){
   vars_cor = as.data.frame(t(combn(vars_selection$var,4)))
   vars_cor$median_log_p = map_dbl(1:nrow(vars_cor), function(i) median(-log(vars_selection$p[vars_selection$var %in% vars_cor[i,]])))
   
-  top_40_comb = vars_cor %>% top_n(0, median_log_p)
+  top_50_comb = vars_cor %>% top_n(50, median_log_p)
   top_combs = RemoveCorrelatedVars(top_50_comb, data)
   
   return(top_combs %>% top_n(1, median_log_p) %>% select(-median_log_p) %>% sample_n(1) %>% unlist())}
@@ -209,7 +210,6 @@ Dataloader <- function(){
   var_data = read.csv('data/processed/all_projections_3_ssps.csv')
   var_data = var_data %>% filter(Mountain_range != 'Alaska Range')
   var_data$abs_latitude = abs(var_data$latitude)
-  var_data$gl_index = sqrt(var_data$gl_area) / (var_data$gl_distance + sqrt(var_data$gl_area))
   mag_data = read.csv('data/processed/MAG_cov_filtered.tsv', row.names = 'X')
   loaded_data = list(var_data = var_data, mag_data = mag_data, selected_variables = variables)
   return(loaded_data)}
@@ -222,7 +222,7 @@ MainJ <- function(loaded_data = NULL){
   mag_table = loaded_data$mag_data
   variables = loaded_data$selected_variables
   
-  registerDoMC(cores = 24)
+  registerDoMC(cores = 42)
   
   set.seed(23)
   model_out = foreach(mag = 1:nrow(mag_table), .combine = rbind) %:%
