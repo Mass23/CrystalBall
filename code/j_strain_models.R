@@ -14,7 +14,7 @@ variables = c("bioclim_PC1","bioclim_PC2","bioclim_PC3","bioclim_PC4","bioclim_P
                          "clim_tas","clim_pr","clim_scd",'clim_tasmax','clim_tasmin',
                          "pc_water_temp_predicted","pc_turbidity_predicted","pc_conductivity_predicted","pc_ph_predicted",
                          "nut_din_predicted", "nut_srp_predicted", "chla_predicted",
-                         "gl_distance","gl_coverage","gl_area",
+                         "gl_distance","gl_coverage","gl_area","gl_index"
                          "min_feldspar", "min_quartz", "min_calcite", "min_clays",
                          "elevation","latitude","longitude","slope","abs_latitude")
 
@@ -47,7 +47,7 @@ RemoveCorrelatedVars <- function(top_50_comb, data){
   
   idx_to_remove = c()
   for (i in 1:50){
-    vars = top_50_comb[i, colnames(top_50_comb) %in% c('V1', 'V2', 'V3')] %>% unlist() %>% unname()
+    vars = top_50_comb[i, colnames(top_50_comb) %in% c('V1', 'V2', 'V3', 'V4')] %>% unlist() %>% unname()
     max_corr = max(all_corrs[rownames(all_corrs) %in% vars, colnames(all_corrs) %in% vars])
     if (max_corr >= 0.7){idx_to_remove = c(idx_to_remove, i)}}
   if (length(idx_to_remove) > 0){top_50_comb = top_50_comb[-idx_to_remove,]}
@@ -60,21 +60,21 @@ SelectVarsStrain <- function(data, variables, seed){
                                                                          formula = eval(parse(text=paste0('log_abundance ~ s(', x,", k=3, bs='ts')"))), 
                                                                          family = gaussian()))$s.pv)
   
-  vars_cor = as.data.frame(t(combn(vars_selection$var,3)))
+  vars_cor = as.data.frame(t(combn(vars_selection$var,4)))
   vars_cor$median_log_p = map_dbl(1:nrow(vars_cor), function(i) median(-log(vars_selection$p[vars_selection$var %in% vars_cor[i,]])))
   
-  top_40_comb = vars_cor %>% top_n(40, median_log_p)
-  top_combs = RemoveCorrelatedVars(top_40_comb, data)
+  top_40_comb = vars_cor %>% top_n(0, median_log_p)
+  top_combs = RemoveCorrelatedVars(top_50_comb, data)
   
   return(top_combs %>% top_n(1, median_log_p) %>% select(-median_log_p) %>% sample_n(1) %>% unlist())}
 
 FitModelStrain <- function(train, variables, n){
   set.seed(n)
   feat_selected = SelectVarsStrain(train, variables, n)
-  form_final = paste0("log_abundance ~ s(",
-                      variables[1], ", k=3, bs='ts') + s(", 
-                      variables[2], ", k=3, bs='ts') + s(", 
-                      variables[3], ", k=3, bs='ts')",  collapse = '')
+  form_final = paste0("log_abundance ~ s(", variables[1], ", k=3, bs='ts') + s(",
+                                            variables[2], ", k=3, bs='ts') + s(",
+                                            variables[3], ", k=3, bs='ts') + s(",
+                                            variables[4], ", k=3, bs='ts')",  collapse = '')
 
   train_n = train[train$fold != n,]
   train_n = train_n[!duplicated(train_n$Glacier),]
@@ -209,6 +209,7 @@ Dataloader <- function(){
   var_data = read.csv('data/processed/all_projections_3_ssps.csv')
   var_data = var_data %>% filter(Mountain_range != 'Alaska Range')
   var_data$abs_latitude = abs(var_data$latitude)
+  var_data$gl_index = sqrt(var_data$gl_area) / (var_data$gl_distance + sqrt(var_data$gl_area))
   mag_data = read.csv('data/processed/MAG_cov_filtered.tsv', row.names = 'X')
   loaded_data = list(var_data = var_data, mag_data = mag_data, selected_variables = variables)
   return(loaded_data)}
