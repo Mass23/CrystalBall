@@ -19,7 +19,7 @@ library(phytools)
 
 LoadData <- function(){
   model_out = read.csv('stats/model_res_all_scenarios_final.csv')
-  model_out = model_out %>% filter(scenario == 370, r2 >= 0.1)
+  model_out = model_out %>% filter(scenario == 370, r2 > 0.05)
   model_out$Category = 'Not significant'
   model_out$Category[(model_out$wilcox_p < 0.05) & (model_out$median_change < 0)] = 'Decrease'
   model_out$Category[(model_out$wilcox_p < 0.05) & (model_out$median_change > 0)] = 'Increase'
@@ -39,7 +39,7 @@ LoadData <- function(){
   tree = keep.tip(tree, unique(func_tab$MAGs[func_tab$MAGs %in% tree$tip.label]))
   func_tab = func_tab[func_tab$MAGs %in% tree$tip.label,]
 
-  phylo_clusters = cutree(hclust(as.dist(cophenetic(tree)), method = 'ward.D2'), 20)
+  phylo_clusters = cutree(hclust(as.dist(cophenetic(tree)), method = 'ward.D2'), 40)
   func_tab$PhyloCluster = map_chr(func_tab$MAGs, function(x) as.character(phylo_clusters[names(phylo_clusters) == x]))
   func_tab$ClusterWeight = map_dbl(func_tab$PhyloCluster, function(x) 1/sum(func_tab$PhyloCluster == x))
 
@@ -64,7 +64,8 @@ FunctionalRandomForests <- function(func_tab, n_cores=8){
     test = func_tab %>% filter(PhyloCluster == clu) %>% select(-ClassWeight, -Completeness, -ClusterWeight, -PhyloCluster, -MAGs)
     
     train_stats = data.frame()
-    for (i in 1:50){
+    for (i in 1:20){
+      set.seed(i)
       reg_factor = sample(c(0.2,0.4,0.6,0.8,1),1)[1]
       reg_depth = sample(c(TRUE, FALSE), 1)[1]
       n_trees = sample(c(250,500,750,1000,1500), 1)[1]
@@ -82,7 +83,7 @@ FunctionalRandomForests <- function(func_tab, n_cores=8){
     rf_final = ranger(y = train$Category, x = train %>% select(-Weight, -Category), importance = "permutation", case.weights = train$Weight, 
                       num.trees = best_model$n_trees[1], max.depth = best_model$max_d[1], mtry = best_model$mtr[1], sample.fraction = best_model$s_frac[1], 
                       regularization.factor = best_model$reg_factor[1], regularization.usedepth = best_model$reg_depth[1], splitrule = best_model$splitr[1])
-    imp_pvals = as.data.frame(importance_pvalues(rf_final, data = test %>% select(-Weight), formula = Category ~ ., method = "altmann", num.permutations = 999))
+    imp_pvals = as.data.frame(importance_pvalues(rf_final, data = test %>% select(-Weight), formula = Category ~ ., method = "altmann", num.permutations = 99))
     
     imp_pvals$KEGG_ko = train %>% select(-Weight, -Category) %>% colnames()
     imp_pvals$cluster = clu
@@ -102,8 +103,7 @@ GetTopKOs <- function(rf_out){
   top_kos = sign_kos %>% group_by(KEGG_ko) %>% summarise(n=n()) %>% filter(n > 10) %>% arrange(-n)
   write.csv(top_kos, 'stats/functional_top_kos.csv', quote=F, row.names=F)
   return(sign_kos)}
-#   KEGG_ko       n
-#     <chr>    <int>
+#    KEGG_ko     n
 #  1 K14215      19 - trans,polycis-decaprenyl diphosphate synthase - biosynthesis of cell wall in Mycobacterium (https://journals.asm.org/doi/10.1128/JB.186.22.7564-7570.2004)
 #  2 K18455      19 - mycothiol S-conjugate amidase - Detoxification, stress related (https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0115075)
 #  3 K00697      18 - trehalose 6-phosphate synthase - sugar metabolism and related to cold stress (https://www.tandfonline.com/doi/full/10.1080/21505594.2020.1809326)
@@ -144,8 +144,8 @@ FunctionalGenomeStats <- function(func_tab){
   spec_gen_tab = read.csv('data/raw/bacteria/spec_gen.tsv', sep='\t')
 
   sign_categories_df$Group = map_chr(sign_categories_df$MAG, function(x) ifelse(func_tab$Category[func_tab$MAGs == x] == 1, 'Decrease', 'Not significant or increase'))
-  sign_categories_df$Specialist = map_chr(sign_categories_df$MAG, function(x) ifelse(x %in% spec_gen_tab$Mags, spec_gen_tab$sign[spec_gen_tab$Mags == x], 'NA'))
-  sign_categories_df$PhyloCluster =  map_chr(sign_categories_df$MAG, function(x) unique(func_tab$PhyloCluster[func_tab$MAGs == x]))
+  sign_categories_df$Specialist = map_chr(sign_categories_df$MAG, function(x) ifelse(x %in% spec_gen_tab$MAG, spec_gen_tab$sign[spec_gen_tab$MAG == x], 'NA'))
+  sign_categories_df$PhyloCluster =  map_chr(sign_categories_df$MAG, function(x) paste0('PC', unique(func_tab$PhyloCluster[func_tab$MAGs == x])))
   sign_categories_df$Count = map_int(1:nrow(sign_categories_df), function(i) sum(func_tab[func_tab$MAGs == sign_categories_df$MAG[i], colnames(func_tab) %in% kegg_tab$ko[kegg_tab$Path_2 == sign_categories_df$Category[i]]]))
   sign_categories_df$Count_total = map_int(1:nrow(sign_categories_df), function(i) sum(func_tab[func_tab$MAGs == sign_categories_df$MAG[i], startsWith(colnames(func_tab), 'K')]))
   sign_categories_df$Count_unique = map_int(1:nrow(sign_categories_df), function(i) sum(func_tab[func_tab$MAGs == sign_categories_df$MAG[i], startsWith(colnames(func_tab), 'K')] > 0))
@@ -160,54 +160,81 @@ FunctionalGenomeStats <- function(func_tab){
 
   write.csv(sign_categories_df, 'stats/functional_stats.csv', quote=F, row.names=F)}
 
-FunctionalModelsPlots <- function(){
-  sign_categories_df = read.csv('stats/functional_stats.csv')
+FunctionalPlots <- function(){
+  sign_categories_df = read.csv('stats/functional_stats.csv') %>% na.omit()
 
   p1 = sign_categories_df %>% select(Completeness, Group, MAG, Count, Category) %>% distinct() %>%
-    ggplot(aes(x=Completeness*100, y=Count, colour=Group)) + geom_point(alpha=0.1) + geom_smooth(method = 'lm', formula = y ~ x -1) + facet_grid(~Category) + 
+    ggplot(aes(x=Completeness*100, y=Count, colour=Group)) + geom_point(alpha=0.1) + geom_smooth(method = 'lm', formula = y ~ x) + facet_grid(~Category) + 
     theme_linedraw() + ylab('KO [#]') + xlab('Completeness [%]') + scale_colour_manual(values=c('#E04D55', '#15356B')) + theme(panel.grid = element_blank())
 
-  p2 = sign_categories_df %>% select(Completeness, Group, MAG, Count_total) %>% distinct() %>%
-    ggplot(aes(x=Group, y=Count_total*(1/Completeness), colour=Group)) + geom_boxplot() + theme_linedraw() + stat_compare_means(label.y = 640) +
-    ylab('Total KO [#]') + xlab('') + scale_colour_manual(values=c('#E04D55', '#15356B')) + ylim(100, 660) +
+  p2 = sign_categories_df %>% select(Completeness, Group, MAG, Count_total, Size) %>% distinct() %>%
+    ggplot(aes(x=log(Size/1000), y=log(Count_total), colour=Group)) + geom_point(alpha=0.1) + geom_smooth(method='lm', formula = y ~ x) + theme_linedraw() + 
+    ylab('Total KO [ln #]') + xlab('Genome size [ln mbp]') + scale_colour_manual(values=c('#E04D55', '#15356B')) + 
     theme(panel.grid = element_blank(), legend.position = 'none', axis.text.x = element_blank(), axis.ticks.x = element_blank())
 
-  p3 = sign_categories_df %>% select(Completeness, Group, MAG, Size) %>% distinct() %>%
-    ggplot(aes(x=Group, y=Size/1000000*(1/Completeness), colour=Group)) + geom_boxplot() + theme_linedraw() + stat_compare_means(label.y = 11.6) +
-    ylab('Genome size [mbp]') + xlab('') + scale_colour_manual(values=c('#E04D55', '#15356B')) + ylim(1, 12) +
-    theme(panel.grid = element_blank(), legend.position = 'none', axis.text.x = element_blank(), axis.ticks.x = element_blank())
+  p = ggarrange(p1, p2, ncol = 1, nrow = 2, align = 'v', common.legend = T, legend = 'bottom', labels = c('A','B'))
+  ggsave('plots/Fig_6_functional.pdf', width = 5, height = 5.5)
+  }
 
-  #pb = ggarrange(p2, p3, ncol = 2, nrow = 1, labels = c('B', 'C'))
-  #p = ggarrange(p1, pb, ncol = 1, nrow = 2, align = 'v', common.legend = T, legend = 'bottom', labels = c('A','',''))
-  #ggsave('plots/Fig_6_functional.pdf', width = 5, height = 5.5)
+FunctionalModels <- function(){
+  sign_categories_df = read.csv('stats/functional_stats.csv') %>% na.omit()
+  sign_categories_genomes = sign_categories_df %>% select(-Category, -Count) %>% distinct()
 
+  print('-----------------------------------------------------------------------------------------------')
   print('Carbohydrate metabolism:')
-  print(summary(lm(data = sign_categories_df %>% filter(Category == 'Carbohydrate metabolism'), formula = log1p(Count) ~ Completeness:Group + Contamination -1)))
+  car_met = lm(data = sign_categories_df %>% filter(Category == 'Carbohydrate metabolism'), 
+               formula = log1p(Count) ~ Group + Completeness + Contamination)
+  print(summary(car_met))
   
+  print('-----------------------------------------------------------------------------------------------')
   print('Energy metabolism:')
-  print(summary(lm(data = sign_categories_df %>% filter(Category == 'Energy metabolism'), formula = log1p(Count) ~ Completeness:Group + Contamination -1)))
+  en_met = lm(data = sign_categories_df %>% filter(Category == 'Energy metabolism'), 
+              formula = log1p(Count) ~ Group + Completeness + Contamination)
+  print(summary(en_met))
 
+  print('-----------------------------------------------------------------------------------------------')
+  print('Relative arbohydrate metabolism:')
+  car_rel_met = lm(data = sign_categories_df %>% filter(Category == 'Carbohydrate metabolism'), 
+               formula = (Count/Count_total) ~ Group + Completeness + Contamination)
+  print(summary(car_rel_met))
+  
+  print('-----------------------------------------------------------------------------------------------')
+  print('Relative energy metabolism:')
+  en_rel_met = lm(data = sign_categories_df %>% filter(Category == 'Energy metabolism'), 
+              formula = (Count/Count_total) ~ Group + Completeness + Contamination)
+  print(summary(en_rel_met))
+
+  print('-----------------------------------------------------------------------------------------------')  
   print('KO number:')
-  print(summary(lm(data=sign_categories_df, formula = log1p(Count_total) ~ Completeness:Group + Contamination -1)))
+  ko_n = lm(data=sign_categories_genomes, formula = log1p(Count_total) ~ Group + Completeness:PhyloCluster + Contamination)
+  print(summary(ko_n))
 
+  print('-----------------------------------------------------------------------------------------------')  
   print('Genome length:')
-  print(summary(lm(data=sign_categories_df, formula = log1p(Size) ~ Completeness:Group + Contamination -1)))
+  gen_len = lm(data=sign_categories_genomes, formula = log1p(Size) ~ Group + Completeness:PhyloCluster + Contamination)
+  print(summary(gen_len))
 
+  print('-----------------------------------------------------------------------------------------------')  
   print('Redundancy index:')
-  print(summary(lm(data=sign_categories_df, formula = Redundancy_index ~ Completeness:Group + Contamination -1)))
+  red_i = lm(data=sign_categories_genomes, formula = Redundancy_index ~ Group + Completeness:PhyloCluster + Contamination)
+  print(summary(red_i))
 
-  print('Specialist binomial:')
-  print(summary(glm(data=sign_categories_df, formula = as.integer(Specialist == 'SPECIALIST') ~ Completeness:Group + Contamination -1, family=binomial())))
+  print('-----------------------------------------------------------------------------------------------')  
+  print('Specialists:')
+  sign_categories_genomes$Specialist = ifelse(sign_categories_genomes$Specialist == 'SPECIALIST', 'Specialists', 'Others')
+  print(table(sign_categories_genomes$Specialist, sign_categories_genomes$Group))  
+  print(fisher.test(table(sign_categories_genomes$Specialist, sign_categories_genomes$Group)))
   }
 
 MainM <- function(){
   func_tab = LoadData()
-  #rf_res = FunctionalRandomForests(func_tab)
+  rf_res = FunctionalRandomForests(func_tab)
   rf_res = read.csv('data/processed/functional_random_forests.csv')
   sign_kos = GetTopKOs(rf_res)
-  #sign_categories_df = FunctionalEnrichment(func_tab, sign_kos)
+  sign_categories_df = FunctionalEnrichment(func_tab, sign_kos)
   FunctionalGenomeStats(func_tab)
-  FunctionalModelsPlots()
+  #FunctionalModels()
+  #FunctionalPlots()
   }
 
 
