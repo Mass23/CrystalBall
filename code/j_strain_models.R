@@ -9,6 +9,7 @@ library(matrixStats)
 library(foreach)
 library(doMC)
 library(glmnet)
+source('code/f_stream_parameters_models.R')
 
 set.seed(23)
 variables = c("bioclim_PC1","bioclim_PC2","bioclim_PC3","bioclim_PC4","bioclim_PC5","bioclim_PC6",
