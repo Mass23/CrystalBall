@@ -16,13 +16,16 @@ library(doMC)
 #install.packages('poolr',repos = "http://cran.us.r-project.org")
 library(poolr)
 library(phytools)
+library(mgcv)
+library(performance)
 
 LoadData <- function(){
   model_out = read.csv('stats/model_res_all_scenarios_final.csv')
-  model_out = model_out %>% filter(scenario == 370, r2 > 0.05)
-  model_out$Category = 'Not significant'
-  model_out$Category[(model_out$wilcox_p < 0.05) & (model_out$median_change < 0)] = 'Decrease'
-  model_out$Category[(model_out$wilcox_p < 0.05) & (model_out$median_change > 0)] = 'Increase'
+  model_out = model_out %>% select(MAG, wilcox_p, median_change, r2, scenario, mean_rel_ab) %>% distinct()
+  decreasing_mags = model_out %>% filter(wilcox_p < 0.05, median_change < 0) %>% group_by(MAG) %>% summarise(n=n()) %>% filter(n > 2) %>% pull(MAG)
+  model_out = model_out %>% filter(scenario == 370, r2 > 0.1)
+  model_out$Category = 'Not significant and increase'
+  model_out$Category[model_out$MAG %in% decreasing_mags] = 'Decrease'
 
   # Functions to table
   func_mags = read.csv('data/raw/bacteria/NOMIS_MAGs_Contigs_Genes_KO.txt', sep='\t')
@@ -39,9 +42,11 @@ LoadData <- function(){
   tree = keep.tip(tree, unique(func_tab$MAGs[func_tab$MAGs %in% tree$tip.label]))
   func_tab = func_tab[func_tab$MAGs %in% tree$tip.label,]
 
-  phylo_clusters = cutree(hclust(as.dist(cophenetic(tree)), method = 'ward.D2'), 40)
+  phylo_clusters = cutree(hclust(as.dist(cophenetic(tree)), method = 'ward.D2'), 20)
   func_tab$PhyloCluster = map_chr(func_tab$MAGs, function(x) as.character(phylo_clusters[names(phylo_clusters) == x]))
   func_tab$ClusterWeight = map_dbl(func_tab$PhyloCluster, function(x) 1/sum(func_tab$PhyloCluster == x))
+
+  print(table(func_tab$Category, func_tab$PhyloCluster))
 
   # Completeness
   checkm2_out = read.delim('data/raw/bacteria/checkm2_final.tsv')
@@ -52,7 +57,7 @@ LoadData <- function(){
   func_tab$Weight = func_tab$ClassWeight * func_tab$ClusterWeight * func_tab$Completeness
 
   func_tab$Category = ifelse(func_tab$Category == 'Decrease', 0, 1)
-  func_tab = func_tab %>% filter(PhyloCluster %in% names(which(rowSums(table(func_tab$PhyloCluster, func_tab$Category) >= 3) == 2))) # 34 clusters kept
+  func_tab = func_tab %>% filter(PhyloCluster %in% names(which(rowSums(table(func_tab$PhyloCluster, func_tab$Category) >= 3) == 2)))
   return(func_tab)}
 
 FunctionalRandomForests <- function(func_tab, n_cores=8){
@@ -64,7 +69,7 @@ FunctionalRandomForests <- function(func_tab, n_cores=8){
     test = func_tab %>% filter(PhyloCluster == clu) %>% select(-ClassWeight, -Completeness, -ClusterWeight, -PhyloCluster, -MAGs)
     
     train_stats = data.frame()
-    for (i in 1:20){
+    for (i in 1:100){
       set.seed(i)
       reg_factor = sample(c(0.2,0.4,0.6,0.8,1),1)[1]
       reg_depth = sample(c(TRUE, FALSE), 1)[1]
@@ -83,7 +88,7 @@ FunctionalRandomForests <- function(func_tab, n_cores=8){
     rf_final = ranger(y = train$Category, x = train %>% select(-Weight, -Category), importance = "permutation", case.weights = train$Weight, 
                       num.trees = best_model$n_trees[1], max.depth = best_model$max_d[1], mtry = best_model$mtr[1], sample.fraction = best_model$s_frac[1], 
                       regularization.factor = best_model$reg_factor[1], regularization.usedepth = best_model$reg_depth[1], splitrule = best_model$splitr[1])
-    imp_pvals = as.data.frame(importance_pvalues(rf_final, data = test %>% select(-Weight), formula = Category ~ ., method = "altmann", num.permutations = 99))
+    imp_pvals = as.data.frame(importance_pvalues(rf_final, data = test %>% select(-Weight), formula = Category ~ ., method = "altmann", num.permutations = 999))
     
     imp_pvals$KEGG_ko = train %>% select(-Weight, -Category) %>% colnames()
     imp_pvals$cluster = clu
@@ -100,7 +105,7 @@ GetTopKOs <- function(rf_out){
     top_kos = rf_clu %>% filter(pvalue < 0.01, importance >= quantile(rf_clu$importance, probs = 0.95)) %>% pull(KEGG_ko)
     sign_kos = rbind(sign_kos, data.frame(Cluster=rep(clu, length(top_kos)), KEGG_ko=as.vector(top_kos)))}
 
-  top_kos = sign_kos %>% group_by(KEGG_ko) %>% summarise(n=n()) %>% filter(n > 10) %>% arrange(-n)
+  top_kos = sign_kos %>% group_by(KEGG_ko) %>% summarise(n=n()) %>% filter(n > 20) %>% arrange(-n)
   write.csv(top_kos, 'stats/functional_top_kos.csv', quote=F, row.names=F)
   return(sign_kos)}
 #    KEGG_ko     n
@@ -125,13 +130,13 @@ FunctionalEnrichment <- function(func_tab, sign_kos){
 
   enrich_analysis = data.frame()
   for (cat in unique(kegg_tab_clean$Path_2)){
-    if ((sum(kegg_tab_clean$Sign) >= 0) & (sum(kegg_tab_clean$Path_2 == cat) >= 5)){
+    if ((sum(kegg_tab_clean$Sign == 0) >= 1) & (sum(kegg_tab_clean$Sign == 1) >= 1) & (sum(kegg_tab_clean$Path_2 == cat) >= 5)){
       cont_tab = table(kegg_tab_clean$Path_2 == cat, kegg_tab_clean$Sign == 1)
       ftest = fisher.test(cont_tab)
       enrich_analysis = rbind(enrich_analysis, data.frame(Path_2 = cat, p=ftest$p.value, OR=ftest$estimate))}}
   enrich_analysis$padj = p.adjust(enrich_analysis$p, method = 'bonferroni')
   enrich_analysis %>% filter(padj < 0.05, OR > 1)
-  write.csv(enrich_analysis %>% filter(padj < 0.05, OR > 1), 'stats/functional_enrichment.csv', quote=F, row.names=F)}
+  write.csv(enrich_analysis, 'stats/functional_enrichment.csv', quote=F, row.names=F)}
 
 FunctionalGenomeStats <- function(func_tab){
   enrich_analysis = read.csv('stats/functional_enrichment.csv')
@@ -141,10 +146,11 @@ FunctionalGenomeStats <- function(func_tab){
   mags_summary = read.csv('data/raw/bacteria/genomeInformation.csv')
   checkm2_out = read.delim('data/raw/bacteria/checkm2_final.tsv')
   kegg_tab = read.csv('data/raw/bacteria/keggPathwayGood.txt', sep='\t')
-  spec_gen_tab = read.csv('data/raw/bacteria/spec_gen.tsv', sep='\t')
+
+  model_out = read.csv('stats/model_res_all_scenarios_final.csv')
+  model_out = model_out %>% select(MAG, wilcox_p, median_change, r2, scenario, mean_rel_ab) %>% distinct()
 
   sign_categories_df$Group = map_chr(sign_categories_df$MAG, function(x) ifelse(func_tab$Category[func_tab$MAGs == x] == 1, 'Decrease', 'Not significant or increase'))
-  sign_categories_df$Specialist = map_chr(sign_categories_df$MAG, function(x) ifelse(x %in% spec_gen_tab$MAG, spec_gen_tab$sign[spec_gen_tab$MAG == x], 'NA'))
   sign_categories_df$PhyloCluster =  map_chr(sign_categories_df$MAG, function(x) paste0('PC', unique(func_tab$PhyloCluster[func_tab$MAGs == x])))
   sign_categories_df$Count = map_int(1:nrow(sign_categories_df), function(i) sum(func_tab[func_tab$MAGs == sign_categories_df$MAG[i], colnames(func_tab) %in% kegg_tab$ko[kegg_tab$Path_2 == sign_categories_df$Category[i]]]))
   sign_categories_df$Count_total = map_int(1:nrow(sign_categories_df), function(i) sum(func_tab[func_tab$MAGs == sign_categories_df$MAG[i], startsWith(colnames(func_tab), 'K')]))
@@ -153,6 +159,7 @@ FunctionalGenomeStats <- function(func_tab){
   sign_categories_df$Completeness = map_dbl(sign_categories_df$MAG, function(x) checkm2_out$Completeness[checkm2_out$Name == x]/100)
   sign_categories_df$Contamination = map_dbl(sign_categories_df$MAG, function(x) checkm2_out$Contamination[checkm2_out$Name == x]/100)
   sign_categories_df$Size = map_dbl(sign_categories_df$MAG, function(x) mags_summary$length[mags_summary$genome == paste0(x, '.fa', collapse = '')])
+  sign_categories_df$MeanRelAb = map_dbl(sign_categories_df$MAG, function(x) unique(model_out$mean_rel_ab[model_out$MAG == x]))
 
   sign_categories_df$Category = as.character(sign_categories_df$Category)
   sign_categories_df$Category[sign_categories_df$Category == '09101 Carbohydrate metabolism'] = 'Carbohydrate metabolism'
@@ -176,65 +183,61 @@ FunctionalPlots <- function(){
   ggsave('plots/Fig_6_functional.pdf', width = 5, height = 5.5)
   }
 
+FitModel <- function(mod_data, resp_var){
+  form = paste0(resp_var, " ~ Group + s(Completeness, k=5, bs='ts') + s(Contamination, k=5, bs='ts')", collapse='')
+  log_form = paste0("log(", resp_var, ") ~ Group + s(Completeness, k=5, bs='ts') + s(Contamination, k=5, bs='ts')", collapse='')
+
+  gaussian = bam(data = mod_data, formula = eval(parse(text=form)), family=gaussian(), method = "REML", weights=Completeness)
+  print('i')
+  gaussian_log = bam(data = mod_data, formula = eval(parse(text=log_form)), family=gaussian(), method = "REML", weights=Completeness)
+  print('ii')
+  poisson = bam(data = mod_data, formula = eval(parse(text=log_form)), family=poisson(), method = "REML", weights=Completeness)
+  print('iii')
+  neg_binomial = bam(data = mod_data, formula = eval(parse(text=form)), family=nb(), method = "REML", weights=Completeness)
+  print('iiii')
+  neg_binomial_log = bam(data = mod_data, formula = eval(parse(text=log_form)), family=nb(), method = "REML", weights=Completeness)
+
+  models = list(gaussian, gaussian_log, poisson, neg_binomial, neg_binomial_log)
+  perf_comp = na.omit(as.data.frame(test_wald(models)))
+  print(perf_comp)
+  best_index = as.integer(strsplit(perf_comp$Name[which.max(perf_comp$F),], split='_')[[1]][2])
+  print(best_index)
+  return(models[[best_index]])}
+
 FunctionalModels <- function(){
   sign_categories_df = read.csv('stats/functional_stats.csv') %>% na.omit()
   sign_categories_genomes = sign_categories_df %>% select(-Category, -Count) %>% distinct()
 
   print('-----------------------------------------------------------------------------------------------')
   print('Carbohydrate metabolism:')
-  car_met = lm(data = sign_categories_df %>% filter(Category == 'Carbohydrate metabolism'), 
-               formula = log1p(Count) ~ Group + Completeness + Contamination)
-  print(summary(car_met))
-  
-  print('-----------------------------------------------------------------------------------------------')
-  print('Energy metabolism:')
-  en_met = lm(data = sign_categories_df %>% filter(Category == 'Energy metabolism'), 
-              formula = log1p(Count) ~ Group + Completeness + Contamination)
-  print(summary(en_met))
+  print(summary(FitModel(sign_categories_df %>% filter(Category == 'Carbohydrate metabolism'), 'Count')))
 
   print('-----------------------------------------------------------------------------------------------')
-  print('Relative arbohydrate metabolism:')
-  car_rel_met = lm(data = sign_categories_df %>% filter(Category == 'Carbohydrate metabolism'), 
-               formula = (Count/Count_total) ~ Group + Completeness + Contamination)
-  print(summary(car_rel_met))
-  
-  print('-----------------------------------------------------------------------------------------------')
-  print('Relative energy metabolism:')
-  en_rel_met = lm(data = sign_categories_df %>% filter(Category == 'Energy metabolism'), 
-              formula = (Count/Count_total) ~ Group + Completeness + Contamination)
-  print(summary(en_rel_met))
+  print('Energy metabolism:')
+  print(summary(FitModel(sign_categories_df %>% filter(Category == 'Energy metabolism'), 'Count')))
 
   print('-----------------------------------------------------------------------------------------------')  
   print('KO number:')
-  ko_n = lm(data=sign_categories_genomes, formula = log1p(Count_total) ~ Group + Completeness:PhyloCluster + Contamination)
-  print(summary(ko_n))
+  print(summary(FitModel(sign_categories_genomes, 'Count_total')))
 
   print('-----------------------------------------------------------------------------------------------')  
   print('Genome length:')
-  gen_len = lm(data=sign_categories_genomes, formula = log1p(Size) ~ Group + Completeness:PhyloCluster + Contamination)
-  print(summary(gen_len))
+  print(summary(FitModel(sign_categories_genomes, 'Size')))
 
   print('-----------------------------------------------------------------------------------------------')  
   print('Redundancy index:')
-  red_i = lm(data=sign_categories_genomes, formula = Redundancy_index ~ Group + Completeness:PhyloCluster + Contamination)
-  print(summary(red_i))
-
-  print('-----------------------------------------------------------------------------------------------')  
-  print('Specialists:')
-  sign_categories_genomes$Specialist = ifelse(sign_categories_genomes$Specialist == 'SPECIALIST', 'Specialists', 'Others')
-  print(table(sign_categories_genomes$Specialist, sign_categories_genomes$Group))  
-  print(fisher.test(table(sign_categories_genomes$Specialist, sign_categories_genomes$Group)))
+  print(summary(FitModel(sign_categories_genomes, 'Redundancy_index')))
   }
 
 MainM <- function(){
-  func_tab = LoadData()
-  rf_res = FunctionalRandomForests(func_tab)
-  rf_res = read.csv('data/processed/functional_random_forests.csv')
-  sign_kos = GetTopKOs(rf_res)
-  sign_categories_df = FunctionalEnrichment(func_tab, sign_kos)
-  FunctionalGenomeStats(func_tab)
-  #FunctionalModels()
-  #FunctionalPlots()
+  #func_tab = LoadData()
+  #rf_res = FunctionalRandomForests(func_tab)
+  #rf_res = read.csv('data/processed/functional_random_forests.csv')
+  #sign_kos = GetTopKOs(rf_res)
+  #sign_categories_df = FunctionalEnrichment(func_tab, sign_kos)
+  #FunctionalGenomeStats(func_tab)
+  FunctionalModels()
+  FunctionalPlots()
   }
 
 

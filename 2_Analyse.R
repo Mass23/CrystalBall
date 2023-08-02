@@ -23,9 +23,9 @@ Main <- function(){
   #print('Running i_greening_analyses.R ...')
   #MainI()
 
-  source('code/j_strain_models.R')
-  print('Running j_strain_models.R ...')
-  MainJ()
+  #source('code/j_strain_models.R')
+  #print('Running j_strain_models.R ...')
+  #MainJ()
 
   #source('code/k_strain_changes_analyses.R')
   #print('Running k_strain_changes_analyses.R ...')
@@ -35,9 +35,9 @@ Main <- function(){
   #print('Running l_strain_drivers_analyses.R ...')
   #MainL()
 
-  #source('code/m_functional_analysis.R')
-  #print('Running m_functional_analysis.R ...')
-  #MainM()
+  source('code/m_functional_analysis.R')
+  print('Running m_functional_analysis.R ...')
+  MainM()
 }
 
 Main()
