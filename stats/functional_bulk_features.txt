@@ -1,0 +1,244 @@
+[1] "-----------------------------------------------------------------------------------------------"
+[1] "Carbohydrate metabolism:"
+
+Family: gaussian 
+Link function: identity 
+
+Formula:
+Count ~ Group + s(Completeness, k = -1, bs = "ts") + s(Contamination, 
+    k = 3, bs = "ts")
+
+Parametric coefficients:
+              Estimate Std. Error t value Pr(>|t|)    
+(Intercept)    43.0968     0.4082 105.588  < 2e-16 ***
+GroupDecrease   3.8577     0.7903   4.881 1.14e-06 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Approximate significance of smooth terms:
+                   edf Ref.df      F p-value    
+s(Completeness)  0.936      9  0.984 0.00173 ** 
+s(Contamination) 1.865      2 58.617 < 2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+R-sq.(adj) =  0.0725   Deviance explained = 7.39%
+fREML = -4697.3  Scale est. = 0.00037235  n = 1859
+
+Family: quasibinomial 
+Link function: logit 
+
+Formula:
+Count_prop ~ Group + s(Completeness, k = -1, bs = "ts") + s(Contamination, 
+    k = 3, bs = "ts")
+
+Parametric coefficients:
+               Estimate Std. Error t value Pr(>|t|)    
+(Intercept)   -1.686667   0.007622 -221.29  < 2e-16 ***
+GroupDecrease  0.075878   0.014482    5.24 1.79e-07 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Approximate significance of smooth terms:
+                       edf Ref.df     F p-value    
+s(Completeness)  5.0595960      9 5.817  <2e-16 ***
+s(Contamination) 0.0002028      2 0.000   0.663    
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+R-sq.(adj) =  0.0403   Deviance explained = 4.01%
+fREML = -13970  Scale est. = 1.7085e-08  n = 1859
+[1] "-----------------------------------------------------------------------------------------------"
+[1] "Energy metabolism:"
+
+Family: gaussian 
+Link function: identity 
+
+Formula:
+Count ~ Group + te(Completeness, Contamination, N50, k = 3, bs = "cs")
+
+Parametric coefficients:
+              Estimate Std. Error t value Pr(>|t|)    
+(Intercept)    31.2212     0.4003   78.00  < 2e-16 ***
+GroupDecrease   3.4368     0.6887    4.99 6.61e-07 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Approximate significance of smooth terms:
+                                     edf Ref.df     F p-value    
+te(Completeness,Contamination,N50) 13.14     26 10.34  <2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+R-sq.(adj) =  0.138   Deviance explained = 14.4%
+fREML = -4947.1  Scale est. = 0.00028077  n = 1859
+
+Family: quasibinomial 
+Link function: logit 
+
+Formula:
+Count_prop ~ Group + te(Completeness, Contamination, N50, k = 3, 
+    bs = "cs")
+
+Parametric coefficients:
+               Estimate Std. Error t value Pr(>|t|)    
+(Intercept)   -2.083104   0.009854 -211.39  < 2e-16 ***
+GroupDecrease  0.096704   0.016475    5.87 5.16e-09 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Approximate significance of smooth terms:
+                                     edf Ref.df     F p-value    
+te(Completeness,Contamination,N50) 11.72     26 5.974  <2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+R-sq.(adj) =  0.0932   Deviance explained = 8.75%
+fREML = -13976  Scale est. = 1.6926e-08  n = 1859
+[1] "-----------------------------------------------------------------------------------------------"
+[1] "KO number:"
+
+Family: gaussian 
+Link function: identity 
+
+Formula:
+Count_total ~ Group + te(Completeness, Contamination, N50, k = 3, 
+    bs = "cs")
+
+Parametric coefficients:
+              Estimate Std. Error t value Pr(>|t|)    
+(Intercept)    266.700      1.919 139.004  < 2e-16 ***
+GroupDecrease   13.012      3.295   3.949 8.15e-05 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Approximate significance of smooth terms:
+                                     edf Ref.df     F p-value    
+te(Completeness,Contamination,N50) 14.75     26 14.73  <2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+R-sq.(adj) =  0.179   Deviance explained = 18.5%
+fREML = -2035.7  Scale est. = 0.0064129  n = 1859
+[1] "-----------------------------------------------------------------------------------------------"
+[1] "Genome length:"
+
+Family: gaussian 
+Link function: identity 
+
+Formula:
+Genome_length ~ Group + te(Completeness, Contamination, N50, 
+    k = 3, bs = "cs")
+
+Parametric coefficients:
+              Estimate Std. Error t value Pr(>|t|)    
+(Intercept)    3.70126    0.04191  88.306  < 2e-16 ***
+GroupDecrease -0.19032    0.07196  -2.645  0.00825 ** 
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Approximate significance of smooth terms:
+                                     edf Ref.df     F p-value    
+te(Completeness,Contamination,N50) 14.55     26 11.59  <2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+R-sq.(adj) =  0.141   Deviance explained = 14.8%
+fREML = -9141.2  Scale est. = 3.0546e-06  n = 1859
+[1] "-----------------------------------------------------------------------------------------------"
+[1] "Count_unique / Count_total:"
+
+Family: gaussian 
+Link function: identity 
+
+Formula:
+Count_total/Count_unique ~ Group + te(Completeness, Contamination, 
+    N50, k = 3, bs = "cs")
+
+Parametric coefficients:
+               Estimate Std. Error t value Pr(>|t|)    
+(Intercept)    1.263403   0.002775 455.335   <2e-16 ***
+GroupDecrease -0.012228   0.004749  -2.575   0.0101 *  
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Approximate significance of smooth terms:
+                                     edf Ref.df     F p-value    
+te(Completeness,Contamination,N50) 16.73     26 46.11  <2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+R-sq.(adj) =  0.388   Deviance explained =   40%
+fREML = -14180  Scale est. = 1.3254e-08  n = 1859
+[1] "-----------------------------------------------------------------------------------------------"
+[1] "Comparison:"
+
+Call:
+lm(formula = Count_total ~ Group:log(Genome_length), data = sign_categories_genomes, 
+    weights = pc_weight * Completeness * MeanRelAb)
+
+Weighted Residuals:
+     Min       1Q   Median       3Q      Max 
+-0.45808 -0.02378 -0.00313  0.02303  0.52618 
+
+Coefficients:
+                                 Estimate Std. Error t value Pr(>|t|)    
+(Intercept)                       157.165      3.659   42.95   <2e-16 ***
+GroupOthers:log(Genome_length)     94.653      2.935   32.25   <2e-16 ***
+GroupDecrease:log(Genome_length)  109.202      3.484   31.34   <2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 0.0694 on 1856 degrees of freedom
+Multiple R-squared:  0.3833,	Adjusted R-squared:  0.3827 
+F-statistic: 576.9 on 2 and 1856 DF,  p-value: < 2.2e-16
+
+Analysis of Variance Table
+
+Response: Count_total
+                           Df Sum Sq Mean Sq F value    Pr(>F)    
+Group:log(Genome_length)    2 5.5565 2.77824  576.85 < 2.2e-16 ***
+Residuals                1856 8.9389 0.00482                      
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+[1] "Comparison with phylo. structure:"
+
+Call:
+lm(formula = Count_total ~ PhyloCluster + Group:log(Genome_length), 
+    data = sign_categories_genomes, weights = pc_weight * Completeness * 
+        MeanRelAb)
+
+Weighted Residuals:
+      Min        1Q    Median        3Q       Max 
+-0.207630 -0.025457 -0.009522  0.009598  0.279174 
+
+Coefficients:
+                                 Estimate Std. Error t value Pr(>|t|)    
+(Intercept)                       133.528      4.052  32.957  < 2e-16 ***
+PhyloClusterPC10                   14.626      3.567   4.101 4.30e-05 ***
+PhyloClusterPC2                   -39.800      5.335  -7.461 1.32e-13 ***
+PhyloClusterPC3                    61.812      3.091  19.995  < 2e-16 ***
+PhyloClusterPC4                    12.927      3.438   3.760 0.000175 ***
+PhyloClusterPC5                   -32.616      3.673  -8.880  < 2e-16 ***
+PhyloClusterPC6                    32.862      3.670   8.955  < 2e-16 ***
+PhyloClusterPC7                    -3.278      4.088  -0.802 0.422822    
+PhyloClusterPC8                   -58.786      3.939 -14.925  < 2e-16 ***
+PhyloClusterPC9                   -73.780      3.807 -19.378  < 2e-16 ***
+GroupOthers:log(Genome_length)    117.186      2.625  44.636  < 2e-16 ***
+GroupDecrease:log(Genome_length)  114.404      2.771  41.289  < 2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 0.04272 on 1847 degrees of freedom
+Multiple R-squared:  0.7674,	Adjusted R-squared:  0.7661 
+F-statistic: 554.1 on 11 and 1847 DF,  p-value: < 2.2e-16
+
+Analysis of Variance Table
+
+Response: Count_total
+                           Df Sum Sq Mean Sq F value    Pr(>F)    
+PhyloCluster                9 7.4097 0.82330  451.09 < 2.2e-16 ***
+Group:log(Genome_length)    2 3.7146 1.85730 1017.62 < 2.2e-16 ***
+Residuals                1847 3.3710 0.00183                      
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
