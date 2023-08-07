@@ -279,8 +279,6 @@ FunctionalPlots <- function(){
   ggsave('plots/Fig_6_functional.pdf', width = 3.5, height = 5.5)
   }
 
-
-
 MainM <- function(){
   #func_tab = LoadData()
   #rf_res = FunctionalRandomForests(func_tab)
