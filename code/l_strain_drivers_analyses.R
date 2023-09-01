@@ -1,3 +1,4 @@
+Sys.setenv("LANGUAGE"="EN")
 library(mgcv)
 library(ggplot2)
 library(ggpubr)
@@ -35,11 +36,12 @@ LoadData <- function(){
   model_out$median_present[model_out$median_present < 0] = min_non_zero/2
   model_out$log2fc = log2(model_out$median_future) - log2(model_out$median_present)
 
-  model_out$Category = 'Not significant'
-  model_out$Category[(model_out$wilcox_p < 0.05) & (model_out$median_change > 0)] = 'Increase'
-  model_out$Category[(model_out$wilcox_p < 0.05) & (model_out$median_change < 0)] = 'Decrease'
+  model_out$Change = 'Others'
+  #model_out$Change[(model_out$wilcox_p < 0.05) & (model_out$median_change > 0)] = 'Increase'
+  model_out$Change[(model_out$wilcox_p < 0.05) & (model_out$median_change < 0)] = 'Decrease'
 
-  importance_tab = model_out %>% filter(r2 >= 0.05) %>% group_by(MAG) %>% mutate(ImpRank=rank(Freq)/length(Freq)) %>% select(MAG, vars_selection_tab, ImpRank, mean_rel_ab)
+  importance_tab = model_out %>% filter(r2 >= 0.05) %>% group_by(MAG, Change) %>% mutate(ImpRank=rank(Freq)/length(Freq)) %>% 
+                                 select(MAG, vars_selection_tab, ImpRank, mean_rel_ab, r2, Change)
 
   importance_tab$Category = 'Others'
   importance_tab$Category[startsWith(importance_tab$vars_selection_tab, 'bioclim_')] = 'Bioclimatic'
@@ -58,31 +60,47 @@ LoadTree <- function(){
   return(tree)}
 
 PlotDrivers <- function(importance_tab, model_out){
-sp1 = importance_tab %>% group_by(vars_selection_tab, Category) %>% summarise(Importance = weightedMedian(ImpRank, w = mean_rel_ab)) %>% 
-  ggplot(aes(x=Importance*100, y=reorder(vars_selection_tab, Importance), fill=Importance)) + geom_bar(stat='identity') + 
-  facet_grid(Category~., scales = 'free', space = 'free') + theme_linedraw() + ylab('') + xlab('Median rel. rank [%]') + 
+#sp1 = importance_tab %>% group_by(vars_selection_tab, Category) %>% summarise(Importance = weightedMedian(ImpRank, w = mean_rel_ab)) %>% 
+print(colnames(importance_tab))
+importance_tab_1 = importance_tab
+importance_tab_1$Change = 'All'
+sp1 = ggplot(importance_tab_1, aes(x=ImpRank*100, y=reorder(vars_selection_tab, ImpRank), fill=after_stat(x))) + 
+  geom_density_ridges_gradient(scale = 1.5, rel_min_height = 0.01, quantile_lines=TRUE, quantiles=2) + 
+  facet_grid(Category~Change, scales = 'free', space = 'free') + theme_linedraw() + ylab('') + xlab('Relative rank [%]') + 
   scale_y_discrete(labels=as_labeller(clean_names)) + theme(legend.position = 'none', panel.grid = element_blank(), axis.text=element_text(size=12)) + 
-  scale_fill_gradientn(colours = c('#E04D55', '#15356B'))
+  scale_fill_gradientn(colours = c('#E04D55', '#15356B')) +  xlim(0,100) +
+  theme(strip.text.y = element_blank()) + scale_x_continuous(breaks=c(0, 50, 100)) +
+  theme(strip.background.y = element_blank())
+
+importance_tab_2 = importance_tab
+importance_tab_2$variable_all_median = map_dbl(importance_tab_2$vars_selection_tab, function(x) median(importance_tab_1$ImpRank[importance_tab_1$vars_selection_tab == x]*100))
+importance_tab_2$variable_all_median_diff = importance_tab_2$variable_all_median - (importance_tab_2$ImpRank * 100)
+sp2 = ggplot(importance_tab_2, aes(x=variable_all_median_diff, y=reorder(vars_selection_tab, ImpRank), fill=after_stat(x))) + geom_vline(xintercept = 0, colour='dimgrey') + 
+  geom_density_ridges_gradient(scale = 1.5, rel_min_height = 0.01, quantile_lines=TRUE, quantiles=2) + 
+  facet_grid(Category~Change, scales = 'free', space = 'free') + theme_linedraw() + ylab('') + xlab('Difference to All median [%]') + 
+  scale_y_discrete(labels=as_labeller(clean_names)) + theme(legend.position = 'none', panel.grid = element_blank(), axis.text=element_text(size=12),axis.text.y = element_blank()) + # 
+  xlim(-100,100) + scale_x_continuous(breaks=c(-50, 0, 50)) + 
+  scale_fill_gradientn(colours = c('#E04D55', 'lightgrey', '#15356B')) 
 
 # Difference between decreasing / increasing MAGs
-model_out$Category = 'Not significant and increase'
-model_out$Category[(model_out$wilcox_p < 0.05) & (model_out$median_change < 0)] = 'Decrease'
+#model_out$Category = 'Not significant and increase'
+#model_out$Category[(model_out$wilcox_p < 0.05) & (model_out$median_change < 0)] = 'Decrease'
+#
+#vars_comp = model_out %>% group_by(MAG) %>% mutate(ImpRank=rank(Freq)/length(Freq)) %>% 
+#  select(MAG, vars_selection_tab, ImpRank, r2, Category) %>% group_by(vars_selection_tab) %>% 
+#  do(w = wilcox.test(ImpRank~Category, data=., paired=FALSE)$p.value) 
+#
+#vars_comp$median_dec = map_dbl(vars_comp$vars_selection_tab, function(x) model_out %>% filter(Category == 'Decrease') %>% group_by(MAG) %>% 
+#                                 mutate(ImpRank=rank(Freq)/length(Freq)) %>% ungroup() %>% filter(vars_selection_tab == x) %>% pull(ImpRank) %>% median())
+#vars_comp$median_others = map_dbl(vars_comp$vars_selection_tab, function(x) model_out %>% filter(Category != 'Decrease') %>% group_by(MAG) %>% 
+#                                 mutate(ImpRank=rank(Freq)/length(Freq)) %>% ungroup() %>% filter(vars_selection_tab == x) %>% pull(ImpRank) %>% median())
+#vars_comp$median_diff = vars_comp$median_dec - vars_comp$median_others
+#vars_comp$Significant = 'No'
+#vars_comp$Significant[vars_comp$w < 0.05] = 'Yes'
 
-vars_comp = model_out %>% group_by(MAG) %>% mutate(ImpRank=rank(Freq)/length(Freq)) %>% 
-  select(MAG, vars_selection_tab, ImpRank, r2, Category) %>% group_by(vars_selection_tab) %>% 
-  do(w = wilcox.test(ImpRank~Category, data=., paired=FALSE)$p.value) 
-
-vars_comp$median_dec = map_dbl(vars_comp$vars_selection_tab, function(x) model_out %>% filter(Category == 'Decrease') %>% group_by(MAG) %>% 
-                                 mutate(ImpRank=rank(Freq)/length(Freq)) %>% ungroup() %>% filter(vars_selection_tab == x) %>% pull(ImpRank) %>% median())
-vars_comp$median_others = map_dbl(vars_comp$vars_selection_tab, function(x) model_out %>% filter(Category != 'Decrease') %>% group_by(MAG) %>% 
-                                 mutate(ImpRank=rank(Freq)/length(Freq)) %>% ungroup() %>% filter(vars_selection_tab == x) %>% pull(ImpRank) %>% median())
-vars_comp$median_diff = vars_comp$median_dec - vars_comp$median_others
-vars_comp$Significant = 'No'
-vars_comp$Significant[vars_comp$w < 0.05] = 'Yes'
-
-sp2 = vars_comp %>% ggplot(aes(x=median_diff*100, y=reorder(vars_selection_tab, median_diff), fill=Significant)) + 
-  geom_bar(stat='identity') + theme_linedraw() + ylab('') + xlab('Median diff. in rank [%]') + scale_y_discrete(labels=as_labeller(clean_names)) + 
-  theme(legend.position = 'none', panel.grid = element_blank(), axis.text=element_text(size=12)) + scale_fill_manual(values = c('#E04D55', '#15356B'))
+#sp2 = vars_comp %>% ggplot(aes(x=median_diff*100, y=reorder(vars_selection_tab, median_diff), fill=Significant)) + 
+#  geom_bar(stat='identity') + theme_linedraw() + ylab('') + xlab('Median diff. in rank [%]') + scale_y_discrete(labels=as_labeller(clean_names)) + 
+# theme(legend.position = 'none', panel.grid = element_blank(), axis.text=element_text(size=12)) + scale_fill_manual(values = c('#E04D55', '#15356B'))
 
 p = ggarrange(sp1, sp2, nrow = 1, ncol = 2, labels = c('A', 'B'), widths = c(0.5,0.5))
 ggsave(p, filename = 'plots/Fig_5_Drivers.pdf', width = 9, height = 7)}
@@ -123,11 +141,12 @@ MainL <- function(){
   model_out = data$mod
   PlotDrivers(importance_tab, model_out)
 
-  tree = LoadTree()
-  changmodel_outes_tab = model_out[model_out$MAG %in% tree$tip.label,]
-  tree = keep.tip(tree, tree$tip.label[tree$tip.label %in% model_out$MAG])
+  #tree = LoadTree()
+  #changmodel_outes_tab = model_out[model_out$MAG %in% tree$tip.label,]
+  #tree = keep.tip(tree, tree$tip.label[tree$tip.label %in% model_out$MAG])
 
-  PlotPhyloDrivers(model_out, tree)}
+  #PlotPhyloDrivers(model_out, tree)
+}
 
 
 

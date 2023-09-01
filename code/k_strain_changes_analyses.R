@@ -18,6 +18,7 @@ LoadModelOutput <- function(){
   model_out = read.csv('stats/model_res_all_scenarios_final.csv')
   min_non_zero = min(model_out$median_future[model_out$median_future > 0])
   model_out$wilcox_p[is.na(model_out$wilcox_p)] = 1 # NAs for models that selected only variables that do not change (0 median change, etc.)
+  model_out$wilcox_p = p.adjust(model_out$wilcox_p, method='holm')
   model_out$median_future[model_out$median_future < 0] = min_non_zero/2
   model_out$median_present[model_out$median_present < 0] = min_non_zero/2
   model_out$log2fc = log2(model_out$median_future) - log2(model_out$median_present)

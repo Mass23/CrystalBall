@@ -1,3 +1,5 @@
+Sys.setenv("LANGUAGE"="EN")
+
 Main <- function(){
   #source('code/d_data_processing.R')
   #print('Running d_data_processing.R ...')
@@ -31,13 +33,13 @@ Main <- function(){
   #print('Running k_strain_changes_analyses.R ...')
   #MainK()
 
-  #source('code/l_strain_drivers_analyses.R')
-  #print('Running l_strain_drivers_analyses.R ...')
-  #MainL()
+  source('code/l_strain_drivers_analyses.R')
+  print('Running l_strain_drivers_analyses.R ...')
+  MainL()
 
-  source('code/m_functional_analysis.R')
-  print('Running m_functional_analysis.R ...')
-  MainM()
+  #source('code/m_functional_analysis.R')
+  #print('Running m_functional_analysis.R ...')
+  #MainM()
 }
 
 Main()

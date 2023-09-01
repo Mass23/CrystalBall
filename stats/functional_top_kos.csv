@@ -1,58 +1,59 @@
-KEGG_ko,n
-K03117,10
-K03168,10
-K02860,9
-K03814,9
-K13288,9
-K00140,8
-K00847,8
-K01800,8
-K02339,8
-K03179,8
-K03216,8
-K03558,8
-K03821,8
-K04760,8
-K06195,8
-K07396,8
-K07518,8
-K09748,8
-K11443,8
-K14472,8
-K14540,8
-K00031,7
-K00259,7
-K01682,7
-K01801,7
-K01908,7
-K01971,7
-K02372,7
-K02907,7
-K03501,7
-K03610,7
-K03648,7
-K03774,7
-K04083,7
-K07507,7
-K07712,7
-K10552,7
-K14083,7
-K00697,6
-K01716,6
-K01752,6
-K01759,6
-K01915,6
-K02361,6
-K02427,6
-K02552,6
-K03189,6
-K03527,6
-K03588,6
-K03595,6
-K03770,6
-K03775,6
-K04080,6
-K11103,6
-K13941,6
-K14470,6
-K21619,6
+KEGG_ko,n,Description
+K03117,10,sec-independent protein translocase protein TatB - Importance for cold-shock in Shewanella oneidensis (https://journals.asm.org/doi/full/10.1128/jb.01908-05)
+K03168,10,DNA topoisomerase I topA - cold sensitivity of mutants lacking this gene in E. coli (https://www.jbc.org/article/S0021-9258(20)76598-1/fulltext)
+K02860,9,16S rRNA processing protein RimM - expression linked with the cold-adaptation RbfA gene (https://www.annualreviews.org/doi/pdf/10.1146/annurev-biochem-062608-160432)
+K03814,9,monofunctional glycosyltransferase mtgA - peptidogylacan maturation (https://febs.onlinelibrary.wiley.com/doi/abs/10.1016/0014-5793%2896%2900809-5)
+K13288,9,"oligoribonuclease orn, REX2, REXO2 - associated with biofilm formation (https://www.pnas.org/doi/full/10.1073/pnas.1507245112)"
+K00140,8,"malonate-semialdehyde dehydrogenase (acetylating) / methylmalonate-semialdehyde dehydrogenase mmsA, iolA, ALDH6A1 - differentially expressed at cold temperatures in Psychrobacter (https://ami-journals.onlinelibrary.wiley.com/doi/full/10.1111/1462-2920.13578)"
+K00847,8,fructokinase scrK
+K01800,8,"maleylacetoacetate isomerase maiA, GSTZ1"
+K02339,8,DNA polymerase III subunit chi holC
+K03179,8,4-hydroxybenzoate polyprenyltransferase ubiA 
+K03216,8,"tRNA (cytidine/uridine-2'-O-)-methyltransferase trmL, cspR - tRNA and cold adaptation (https://www.mdpi.com/2218-273X/7/2/35)"
+K03558,8,membrane protein required for colicin V production cvpA - bacteriocin (https://journals.asm.org/doi/full/10.1128/mmbr.00036-06)
+K03821,8,"poly[(R)-3-hydroxyalkanoate] polymerase subunit phaC, phbC - PHAs in the baltic sea, adaptation to cold (https://link.springer.com/article/10.1007/s00792-014-0699-9, https://link.springer.com/article/10.1007/s00792-014-0699-9#ref-CR7)"
+K04760,8,transcription elongation factor greB
+K06195,8,ApaG protein apaG
+K07396,8,"putative protein-disulfide isomerase, participates in the insertion of lipopolysaccharides in the outer membrane (https://www.sciencedirect.com/science/article/pii/S0021925820526628?via%3Dihub)"
+K07518,8,hydroxybutyrate-dimer hydrolase
+K09748,8,"ribosome maturation factor rimP - associated with the cold-adaptation RbfA gene, important at higher temperatures (https://www.sciencedirect.com/science/article/pii/S0022283608016148, https://www.microbiologyresearch.org/content/journal/micro/10.1099/mic.0.052209-0)"
+K11443,8,"two-component system, cell cycle response regulator DivK"
+K14472,8,"succinyl-CoA:(S)-malate CoA-transferase subunit B, smtB - carbon metabolism"
+K14540,8,ribosome biogenesis GTPase A rbgA
+,,
+K00031,7,"isocitrate dehydrogenase IDH1, IDH2, icd"
+K00259,7,
+K01682,7,
+K01801,7,
+K01908,7,
+K01971,7,
+K02372,7,
+K02907,7,
+K03501,7,
+K03610,7,
+K03648,7,
+K03774,7,
+K04083,7,
+K07507,7,
+K07712,7,
+K10552,7,
+K14083,7,
+K00697,6,trehalose 6-phosphate synthase - sugar metabolism and related to cold stress (https://www.tandfonline.com/doi/full/10.1080/21505594.2020.1809326)
+K01716,6,3-hydroxyacyl-[acyl-carrier protein] dehydratase / trans-2-decenoyl-[acyl-carrier protein] isomerase - fatty acids (https://www.sciencedirect.com/science/article/pii/S0021925818688301?via%3Dihub)
+K01752,6,
+K01759,6,
+K01915,6,
+K02361,6,
+K02427,6,
+K02552,6,
+K03189,6,
+K03527,6,
+K03588,6,cell division protein FtsW - transporter of lipid-linked cell wall precursor across the membrane (https://www.embopress.org/doi/full/10.1038/emboj.2011.61)
+K03595,6,
+K03770,6,
+K03775,6,
+K04080,6,
+K11103,6,
+K13941,6,
+K14470,6,
+K21619,6,
