@@ -48,28 +48,28 @@ PlotGreening <- function(greening_data){
     geom_line(aes(group=Sample), size=0.5, colour='black', alpha=0.1) + geom_point(alpha=0.7, size=3) + 
     theme_bw() + scale_colour_manual(values=c('#15356B', '#E04D55')) +
     labs(x = ""*Bacterial~abundance~(log[10]~cells~g^-1)*"",
-        y = "") + theme(legend.title = element_blank(),
+         y = ""*Chlorophyll-italic(a)~(ln~mu*g~g^-1)*"") + theme(legend.title = element_blank(),
                         panel.grid.major = element_blank(),
                         panel.grid.minor = element_blank())
 
-  p3 = ggplot(greening_data, aes(x=Shannon, y=Chlorophyll, colour=Date)) + 
+  p3 = ggplot(greening_data, aes(y=Shannon, x=Chlorophyll, colour=Date)) + 
     geom_line(aes(group=Sample), size=0.5, colour='black', alpha=0.1) + geom_point(alpha=0.7, size=3) + 
     theme_bw() + scale_colour_manual(values=c('#15356B', '#E04D55')) +
-    labs(x = ""*Shannon~index*"",
-        y = "") + theme(legend.title = element_blank(),
-                        panel.grid.major = element_blank(),
-                        panel.grid.minor = element_blank())
+    labs(y = ""*Shannon~index*"",
+         x = ""*Chlorophyll-italic(a)~(ln~mu*g~g^-1)*"") + theme(legend.title = element_blank(),
+                                                                  panel.grid.major = element_blank(),
+                                                                  panel.grid.minor = element_blank())
 
-  p4 = ggplot(greening_data, aes(x=mntd, y=Chlorophyll, colour=Date)) + 
+  p4 = ggplot(greening_data, aes(y=mntd, x=Chlorophyll, colour=Date)) + 
     geom_line(aes(group=Sample), size=0.5, colour='black', alpha=0.1) + geom_point(alpha=0.7, size=3) + 
     theme_bw() + scale_colour_manual(values=c('#15356B', '#E04D55')) +
-    labs(x = bquote(""*alpha~-~MNTD*""),
-        y = "") + theme(legend.title = element_blank(),
-                        panel.grid.major = element_blank(),
-                        panel.grid.minor = element_blank())
+    labs(y = bquote(""*alpha~-~MNTD*""),
+         x = ""*Chlorophyll-italic(a)~(ln~mu*g~g^-1)*"") + theme(legend.title = element_blank(),
+                                                                  panel.grid.major = element_blank(),
+                                                                  panel.grid.minor = element_blank())
 
   p = ggarrange(p1, p2, p3, p4, labels = c('A','B', 'C', 'D'), ncol = 2, nrow = 2, common.legend = T, align = 'h') 
-  ggsave(p, filename = 'plots/Fig_3_chla_prediction.pdf', width = 8, height = 8)}
+  ggsave(p, filename = 'plots/Fig_3_greening.pdf', width = 8, height = 8)}
 
 GreeningCorrelations <- function(greening_data){
   cor_results = data.frame()

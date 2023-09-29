@@ -28,6 +28,7 @@ LoadModelOutput <- function(){
   model_out$Category[(model_out$wilcox_p < 0.05) & (model_out$median_change < 0)] = 'Decrease'
 
   taxonomy = read.csv('data/raw/bacteria/gtdbtk.bac120.summary.tsv', sep='\t')
+  model_out = model_out[model_out$MAG %in% taxonomy$user_genome,]
   taxonomy$Phylum = vapply(taxonomy$classification, function(x) strsplit( strsplit(x, ';c__')[[1]][1], ';p__')[[1]][2], FUN.VALUE = character(1))
   taxonomy$Class = vapply(taxonomy$classification, function(x) strsplit( strsplit(x, ';o__')[[1]][1], ';c__')[[1]][2], FUN.VALUE = character(1))
   taxonomy$Order = vapply(taxonomy$classification, function(x) strsplit( strsplit(x, ';f__')[[1]][1], ';o__')[[1]][2], FUN.VALUE = character(1))
@@ -50,9 +51,13 @@ CompareScenariosChanges <- function(changes_tab){
     msum = summary(lm(data = changes_tab %>% filter(scenario == scenario), formula = median_future ~ median_present))
     capture.output(msum, file = paste0('stats/changes_scenario_comparison_',scenario,'.txt', collapse = ''))}
 
-  p = ggplot(changes_tab, aes(x=median_present, y=median_future, colour=as.factor(scenario))) + geom_point(alpha=0.1) + geom_abline(slope = 1) + 
-    geom_smooth(method='lm', se=F) + scale_x_log10() + scale_y_log10() + theme_linedraw()
-  ggsave(p, filename = 'plots/Fig_S7_compare_scenarios.pdf')}
+  changes_tab$scenario[changes_tab$scenario == 126] = 'RCP2.6'
+  changes_tab$scenario[changes_tab$scenario == 370] = 'RCP4.5'
+  changes_tab$scenario[changes_tab$scenario == 585] = 'RCP8.5'
+  p = ggplot(changes_tab, aes(x=median_present, y=median_future, colour=scenario)) + geom_point(alpha=0.1) + geom_abline(slope = 1) + 
+    geom_smooth(method='lm', se=F) + scale_x_log10() + scale_y_log10() + theme_bw() +  stat_regline_equation() + 
+    xlab('Median present predicted abundance')  + ylab('Median future projected abundance') + labs(colour='Scenario')
+  ggsave(p, filename = 'plots/Fig_S7_compare_scenarios_evenness.pdf', width=6, height=4)}
 
 ProportionIncrease <- function(changes_tab){
   prop_increase_tab = data.frame()
@@ -154,12 +159,14 @@ MonophyleticClades <- function(tree, changes_tab, taxonomy){
     subt_res$Taxonomy[i] = fun_sbst(taxs)}
   subt_res$RelativeDepth = (1.622841 - subt_res$Depth) / 1.622841
 
+  sink(file = 'stats/mono_decreasing_clades_description.txt')
   print(paste0('Number of monophyletic decreasing clades with at least 3 members: ', nrow(subt_res)))
   print(paste0('Number of strains included: ', sum(subt_res$Ntips)))
   print('Relative depth of monophyletic decreasing clades: ')
   print(quantile(subt_res$RelativeDepth))
   print('Number of tips of monophyletic decreasing clades: ')
   print(quantile(subt_res$Ntips))
+  sink(file = NULL)
 
   write.csv(subt_res, file = 'stats/decreasing_clades.csv', quote = F)}
 
@@ -175,21 +182,29 @@ PlotTreeChanges <- function(changes_tab, tree, taxonomy){
                                                                   taxonomy$Class[taxonomy$user_genome == x], 
                                                                   'Others'), FUN.VALUE = character(1))
 
-  top_class = taxonomy %>% group_by(Class) %>% summarise(n=n()) %>% top_n(12) %>% pull(Class)
+  top_class = taxonomy %>% group_by(Class) %>% summarise(n=n()) %>% top_n(11) %>% pull(Class)
   changes_tab$Class[!(changes_tab$Class %in% top_class)] = 'Others'
+  print(quantile(changes_tab$log2fc))
 
-  sp1 = ggtree(tree, layout="fan", size=0.5, open.angle=5,
-              aes(color = group)) + scale_colour_manual(values=c('#E04D55', '#212224')) + new_scale_colour() +
+  class_cols = c('#4A2B94','#3A6EF0','#93CDFA','#A957B3', # blue
+                 '#256316','#61CFC7','#AAC4A5','#E3E8F0', # green
+                 '#96022E','#ED1C09','#E0C16A','#BF5915') # red
+  sp1 = ggtree(tree, layout="fan", size=0.2, open.angle=5,
+              aes(color = group)) + labs(color='Group') + scale_colour_manual(values=c('#E04D55', '#212224')) + new_scale_colour() +
+        geom_fruit(data=changes_tab[changes_tab$scenario == 370,], pwidth	= 0.04, geom=geom_bar, offset = 0.02,
+                   mapping=aes(y=MAG,	x = 5, fill = Class), orientation="y", stat="identity") +
+        labs(fill='') + guides(fill = guide_legend(ncol = 3)) + scale_fill_manual(values=class_cols) + new_scale_colour() + new_scale_fill() +
         geom_fruit(data=changes_tab[changes_tab$scenario == 370,] , geom=geom_point, 
                   mapping=aes(y = MAG, x = log2fc, colour = log2fc, size = mean_rel_ab*100),
-                  offset = 0.15,
+                  offset = 0.3, pwidth=0.4,
                   axis.params=list(axis = "x",text.size  = 2,hjust = 1,vjust = 0.5, nbreak=3), grid.params = list()) + 
-        scale_colour_gradientn(colours = c('#E04D55', '#FA8E8E', '#CAD1E8', '#15356B'), name = bquote(""*log[2]~fold-change*"")) +
-        scale_size_continuous(name='Relative abundance (%)', limits = c(0, 1.25), breaks = c(0,0.4,0.8,1.2)) +
-        theme(legend.position="bottom", legend.box="vertical", legend.margin=margin())
+        scale_colour_gradientn(colours = c('#E04D55', '#CAD1E8', '#15356B'), name = bquote(""*log[2]~fold-change*"")) +
+        scale_size_continuous(name='Present relative abundance (%)', limits = c(0, 1.25), breaks = c(0.4,0.8,1.2)) +
+        theme(legend.key.size = unit(0.2, 'cm'), legend.position="bottom", legend.box="vertical", legend.margin=margin(),
+              legend.key.width = unit(0.5, "cm"))
 
   p2 = changes_tab %>% mutate(Class = fct_reorder(Class, log2fc)) %>% ggplot(aes(x=log2fc, fill=after_stat(x), y=Class)) + 
-    geom_density_ridges_gradient(scale = 2, rel_min_height = 0.01, quantile_lines=TRUE, quantiles=2) + theme_bw() + xlim(-5,5) +
+    geom_density_ridges_gradient(scale = 2, rel_min_height = 0.01, quantile_lines=TRUE, quantiles=2) + theme_bw() + xlim(-4.35,5.3) +
     scale_fill_gradientn(colours = c('#E04D55', '#CAD1E8', '#15356B'), values = scales::rescale(c(-10, -5, 0, 5, 10))) +
     ylab('') + xlab(bquote(""*log[2]~fold-change*"")) + geom_vline(xintercept = 0, colour='#212224', linetype='dashed')  + theme_linedraw() + 
     theme(legend.position = 'none', panel.grid.major = element_blank(), panel.grid.minor = element_blank()) 
@@ -217,14 +232,17 @@ MainK <- function(){
   changes_tab = changes_tab %>% arrange(match(MAG, tree$tip.label))
 
   # Correlation between scenarios
+  sink(file = 'stats/strain_scenarios_correlations.txt')
   print('Correlation between RCP2.6 and 4.5: ')
   print(cor.test(changes_tab$median_future[changes_tab$scenario == 370], changes_tab$median_future[changes_tab$scenario == 126], method = 'pearson'))
   print('Correlation between RCP8.5 and 4.5: ')
   print(cor.test(changes_tab$median_future[changes_tab$scenario == 370], changes_tab$median_future[changes_tab$scenario == 585], method = 'pearson'))
+  sink(file = NULL)
   
   PlotModelPerformances(changes_tab)
   CompareScenariosChanges(changes_tab)
   ProportionIncrease(changes_tab)
   PhyloSignal(changes_tab, tree)
   MonophyleticClades(tree, changes_tab, taxonomy)
-  PlotTreeChanges(changes_tab, tree, taxonomy)}
+  PlotTreeChanges(changes_tab, tree, taxonomy)
+  }

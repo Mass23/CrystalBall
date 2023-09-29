@@ -1,0 +1,26 @@
+[1] "Correlation between RCP2.6 and 4.5: "
+
+	Pearson's product-moment correlation
+
+data:  changes_tab$median_future[changes_tab$scenario == 370] and changes_tab$median_future[changes_tab$scenario == 126]
+t = 250.41, df = 2326, p-value < 2.2e-16
+alternative hypothesis: true correlation is not equal to 0
+95 percent confidence interval:
+ 0.9804402 0.9833509
+sample estimates:
+      cor 
+0.9819536 
+
+[1] "Correlation between RCP8.5 and 4.5: "
+
+	Pearson's product-moment correlation
+
+data:  changes_tab$median_future[changes_tab$scenario == 370] and changes_tab$median_future[changes_tab$scenario == 585]
+t = 693.52, df = 2326, p-value < 2.2e-16
+alternative hypothesis: true correlation is not equal to 0
+95 percent confidence interval:
+ 0.9973869 0.9977786
+sample estimates:
+      cor 
+0.9975907 
+

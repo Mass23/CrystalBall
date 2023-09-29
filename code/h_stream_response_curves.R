@@ -24,7 +24,7 @@ PredictionsStack <- function(submodels, stackmodels, new_data, covariates, kfold
     stack_model_preds = predict(stackmodels[[i]], newx = i_models_preds, type = 'response', s = stackmodels[[i]]$lambda.min, se.fit=T)
     new_data$fit = as.vector(stack_model_preds)
     all_stack_preds = rbind(all_stack_preds, new_data)}
-  return(all_stack_preds %>% group_by_at(c('latitude', 'longitude', 'covariate', 'covariate_val', covariates)) %>% summarise(pred = median(fit), se = se(fit), var_median = median(var_median)))}
+  return(all_stack_preds %>% group_by_at(c('latitude', 'longitude', 'covariate', 'covariate_val', 'covariate_N', covariates)) %>% summarise(pred = median(fit), se = se(fit), var_median = median(var_median)))}
 
 CreatePredictionTable <- function(resp_var, data, sub_models, stack_models, kfold){
     present_up_data = data %>% filter(Date == 'Present', Site == 'UP')
@@ -42,13 +42,13 @@ CreatePredictionTable <- function(resp_var, data, sub_models, stack_models, kfol
         for (sub_model in 1:9){
             vars = colnames(i_sub_models[[sub_model]]$model)
             vars = vars[!(vars %in% c('latitude', 'longitude', resp_var))]
-            i_vars = unique(c(i_vars, vars))}
-        all_vars = unique(c(all_vars, i_vars))}
+            i_vars = c(i_vars, vars)}
+        all_vars = c(all_vars, i_vars)}
     
     # Create the data frame
     full_table = data.frame()
-    for (var in all_vars){
-        other_vars = all_vars[all_vars != var]
+    for (var in unique(all_vars)){
+        other_vars = unique(all_vars)[unique(all_vars) != var]
         var_table = data.frame()
         min_val = present_up_data %>% pull(var) %>% min(na.rm=T)
         max_val = present_up_data %>% pull(var) %>% max(na.rm=T)
@@ -60,6 +60,7 @@ CreatePredictionTable <- function(resp_var, data, sub_models, stack_models, kfol
         var_table$var_median = present_up_data %>% pull(var) %>% median()
         var_table$covariate = var
         var_table$covariate_val = var_table %>% pull(var)
+        var_table$covariate_N = mean(all_vars == var) * 3
         full_table = rbind(full_table, var_table)}
     return(as.data.frame(full_table))}
 
@@ -79,41 +80,27 @@ PlotResponseCurves <- function(data, variables, scenario){
             predictions$Scenario = scenario
             all_data = rbind(all_data, predictions)}}
 
-    all_data = all_data %>% select(Variable, covariate, covariate_val, Scenario, var_median, pred, se) %>% 
+    all_data = all_data %>% select(Variable, covariate, covariate_val, Scenario, var_median, pred, se, covariate_N) %>% 
                             group_by(Variable, covariate, covariate_val, Scenario) %>% 
-                            summarise(pred = median(pred), se = median(se), var_median = median(var_median), covariate_val = median(covariate_val))
+                            summarise(pred = median(pred), se = median(se), var_median = median(var_median), 
+                                      covariate_val = median(covariate_val), covariate_N=mean(covariate_N))
     write.csv(all_data, 'data/processed/stream_response_curves.csv', quote = F, row.names = F)
     return(all_data)}
 
 CreatePlots <- function(){
     all_data = read.csv('data/processed/stream_response_curves.csv')
+    print(unique(all_data$covariate_N))
 
-    p1_data = all_data
-    p2_data = all_data %>% select(Variable, covariate, Scenario) %>% 
-                           group_by(Variable, covariate, Scenario) %>% summarise(prop_selected = n()) 
-
-    p1 = ggplot(p1_data, aes(colour=Scenario)) + facet_grid(Variable~covariate, scales = 'free') + 
+    p = ggplot(all_data, aes(colour=Scenario, alpha=covariate_N/4*3)) + facet_grid(Variable~covariate, scales = 'free') + 
                 geom_line(aes(x=as.numeric(covariate_val), y=pred)) + 
                 geom_line(aes(x=as.numeric(covariate_val), y=pred-se), linetype='dashed') + 
                 geom_line(aes(x=as.numeric(covariate_val), y=pred+se), linetype='dashed') +
                 theme_linedraw() + theme(panel.grid.major = element_blank(),
                                          panel.grid.minor = element_blank(),
                                          strip.text.y = element_text(size = 7)) +
-                ylab('Response') + xlab('Smooth value') + scale_colour_manual(values = c('#AB79F5', '#1E81FC', '#F58965'))
-
-    
-    p2 = ggplot(p2_data, aes(y=Scenario, x='1', fill = Scenario, alpha=prop_selected, label=round(prop_selected, 3))) + 
-                facet_grid(Variable~covariate, scales = 'free', space = 'free')+
-                geom_tile() + geom_text() + 
-                theme_linedraw() + theme(panel.grid.major = element_blank(),
-                                         panel.grid.minor = element_blank(),
-                                         strip.text.y = element_text(size = 7),
-                                         axis.ticks.x = element_blank(),
-                                         axis.text.x = element_blank(),
-                                         legend.position = 'none') + 
-                xlab('') + ylab('') + scale_fill_manual(values = c('#AB79F5', '#1E81FC', '#F58965'))
-#p = ggarrange(p1, p2, ncol = 1, nrow = 2, common.legend = T, heights = c(0.5,0.5))
-ggsave(plot = p1, filename = paste0('plots/Fig_S5_stream_model_response_curves.pdf'), width = 10, height = 11)
+                ylab('Response') + xlab('Smooth value') + scale_colour_manual(values = c('#AB79F5', '#1E81FC', '#F58965')) + 
+                theme(axis.text.x = element_text(angle =45, hjust = 1)) + labs(alpha='Proportion of models') + scale_alpha(breaks=c(0.1,0.5,1.0),limits = c(0, 1))
+ggsave(plot = p, filename = paste0('plots/Fig_S4_stream_model_response_curves.pdf'), width = 10, height = 11)
 }
 
 MainH <- function(){

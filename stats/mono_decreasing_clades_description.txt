@@ -1,0 +1,8 @@
+[1] "Number of monophyletic decreasing clades with at least 3 members: 37"
+[1] "Number of strains included: 164"
+[1] "Relative depth of monophyletic decreasing clades: "
+       0%       25%       50%       75%      100% 
+0.1321069 0.2114846 0.2490877 0.3189852 0.7166253 
+[1] "Number of tips of monophyletic decreasing clades: "
+  0%  25%  50%  75% 100% 
+   3    3    3    4   15 
