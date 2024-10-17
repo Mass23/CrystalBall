@@ -51,9 +51,9 @@ CompareScenariosChanges <- function(changes_tab){
     msum = summary(lm(data = changes_tab %>% filter(scenario == scenario), formula = median_future ~ median_present))
     capture.output(msum, file = paste0('stats/changes_scenario_comparison_',scenario,'.txt', collapse = ''))}
 
-  changes_tab$scenario[changes_tab$scenario == 126] = 'RCP2.6'
-  changes_tab$scenario[changes_tab$scenario == 370] = 'RCP4.5'
-  changes_tab$scenario[changes_tab$scenario == 585] = 'RCP8.5'
+  changes_tab$scenario[changes_tab$scenario == 126] = 'SSP1'
+  changes_tab$scenario[changes_tab$scenario == 370] = 'SSP3'
+  changes_tab$scenario[changes_tab$scenario == 585] = 'SSP5'
   p = ggplot(changes_tab, aes(x=median_present, y=median_future, colour=scenario)) + geom_point(alpha=0.1) + geom_abline(slope = 1) + 
     geom_smooth(method='lm', se=F) + scale_x_log10() + scale_y_log10() + theme_bw() +  stat_regline_equation() + 
     xlab('Median present predicted abundance')  + ylab('Median future projected abundance') + labs(colour='Scenario')
@@ -71,6 +71,10 @@ ProportionIncrease <- function(changes_tab){
   write.csv(prop_increase_tab, 'stats/proportion_increase.csv', quote=F, row.names=F)}
 
 PlotModelPerformances <- function(changes_tab){
+  changes_tab$scenario[changes_tab$scenario == 126] = 'SSP1'
+  changes_tab$scenario[changes_tab$scenario == 370] = 'SSP3'
+  changes_tab$scenario[changes_tab$scenario == 585] = 'SSP5'
+
   changes_tab$R2_cat = '< 0.1'
   changes_tab$R2_cat[changes_tab$r2 >= 0.1] = '< 0.2'
   changes_tab$R2_cat[changes_tab$r2 >= 0.2] = '< 0.3'
@@ -101,20 +105,21 @@ PlotModelPerformances <- function(changes_tab){
     xlab('Mean relative abundance') + scale_y_continuous(name = bquote(""*log[2]~fold-change*""))
 
   p = ggarrange(p1, p2, nrow = 2, align = 'v', labels = c('A', 'B'), heights = c(0.333,0.666))
-  ggsave(p, filename = 'plots/Fig_S6_models_performances.pdf', width = 7, height = 5)
+  ggsave(p, filename = 'plots/Fig_S8_models_performances.pdf', width = 7, height = 5)
   write.csv(table(changes_tab$ab_cat, changes_tab$R2_cat), 'stats/table_r2_abundance.csv', quote=F, row.names=F)}
 
 PhyloSignal <- function(changes_tab, tree){
   sign_tab = data.frame()
-  for (scenario in c(126, 370, 585)){
-    sub_data = changes_tab %>% filter(scenario == 126)
-    for (var in c('log2fc', 'r2')){
-      phylo_test = phylosig(tree, sub_data[,var], method = 'lambda', test=T)
+  sub_data = changes_tab %>% filter(scenario == 370)
+  for (var in c('log2fc', 'r2')){
+      sub_tree = keep.tip(tree, sub_data %>% pull(MAG) %>% as.vector())
+      sub_tree = drop.tip(sub_tree, tree$tip.label[!(tree$tip.label %in% (sub_data %>% pull(MAG) %>% as.vector()))])
+      phylo_test = phylosig(sub_tree, sub_data %>% pull(var) %>% as.vector(), method = 'lambda', test=T)
       pval = phylo_test$P
       lambda = phylo_test$lambda
       logl = phylo_test$logL
       logl0 = phylo_test$logL0
-      sign_tab = rbind(sign_tab, data.frame(Scenario=scenario, Variable=var, p=pval, logl=logl, logl0=logl0, lambda=lambda))}}
+      sign_tab = rbind(sign_tab, data.frame(Scenario='SSP3', Variable=var, p=pval, logl=logl, logl0=logl0, lambda=lambda))}
   write.csv(sign_tab, 'stats/phylogenetic_signal.csv', quote=F, row.names=F)}
 
 fun_sbst <- function(words) { # source: Roland @ https://stackoverflow.com/questions/26285010/r-find-largest-common-substring-starting-at-the-beginning
@@ -172,8 +177,9 @@ MonophyleticClades <- function(tree, changes_tab, taxonomy){
 
 PlotTreeChanges <- function(changes_tab, tree, taxonomy){
   changes_list = list()
+  changes_list$`Not significant` = changes_tab$MAG[(changes_tab$Category == 'Not significant') & (changes_tab$scenario == 370)]
   changes_list$Decrease = changes_tab$MAG[(changes_tab$Category == 'Decrease') & (changes_tab$scenario == 370)]
-  changes_list$`Not significant and increase` = changes_tab$MAG[(changes_tab$Category != 'Decrease') & (changes_tab$scenario == 370)]
+  changes_list$Increase = changes_tab$MAG[(changes_tab$Category == 'Increase') & (changes_tab$scenario == 370)]
 
   tree	<- groupOTU(tree, changes_list)
 
@@ -190,7 +196,7 @@ PlotTreeChanges <- function(changes_tab, tree, taxonomy){
                  '#256316','#61CFC7','#AAC4A5','#E3E8F0', # green
                  '#96022E','#ED1C09','#E0C16A','#BF5915') # red
   sp1 = ggtree(tree, layout="fan", size=0.2, open.angle=5,
-              aes(color = group)) + labs(color='Group') + scale_colour_manual(values=c('#E04D55', '#212224')) + new_scale_colour() +
+              aes(color = group)) + labs(color='Group') + scale_colour_manual(values=c('#E04D55', '#1535AC', '#212224')) + new_scale_colour() +
         geom_fruit(data=changes_tab[changes_tab$scenario == 370,], pwidth	= 0.04, geom=geom_bar, offset = 0.02,
                    mapping=aes(y=MAG,	x = 5, fill = Class), orientation="y", stat="identity") +
         labs(fill='') + guides(fill = guide_legend(ncol = 3)) + scale_fill_manual(values=class_cols) + new_scale_colour() + new_scale_fill() +
@@ -217,7 +223,7 @@ PlotTreeChanges <- function(changes_tab, tree, taxonomy){
   sp2 = ggarrange(p2, p3, heights = c(2, 2), ncol = 1, labels = c('B','C'))
 
   p = ggarrange(sp1, sp2, ncol = 2, nrow = 1, widths = c(0.6, 0.4), labels = c('A',''))
-  ggsave(p, filename = 'plots/Fig_4_Abundance_changes.pdf', width = 9, height = 7)}
+  ggsave(p, filename = 'plots/Fig_2_Abundance_changes.pdf', width = 9, height = 7)}
 
 
 MainK <- function(){
@@ -233,9 +239,9 @@ MainK <- function(){
 
   # Correlation between scenarios
   sink(file = 'stats/strain_scenarios_correlations.txt')
-  print('Correlation between RCP2.6 and 4.5: ')
+  print('Correlation between SSP1 and SSP3: ')
   print(cor.test(changes_tab$median_future[changes_tab$scenario == 370], changes_tab$median_future[changes_tab$scenario == 126], method = 'pearson'))
-  print('Correlation between RCP8.5 and 4.5: ')
+  print('Correlation between SSP3 and SSP5: ')
   print(cor.test(changes_tab$median_future[changes_tab$scenario == 370], changes_tab$median_future[changes_tab$scenario == 585], method = 'pearson'))
   sink(file = NULL)
   
