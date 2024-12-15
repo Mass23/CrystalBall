@@ -280,12 +280,12 @@ FunctionalPlots <- function(){
   }
 
 MainM <- function(){
-  #func_tab = LoadData()
-  #rf_res = FunctionalRandomForests(func_tab)
-  #rf_res = read.csv('data/processed/functional_random_forests.csv')
-  #sign_kos = GetTopKOs(rf_res)
-  #sign_categories_df = FunctionalEnrichment(func_tab, sign_kos)
-  #FunctionalGenomeStats(func_tab)
+  func_tab = LoadData()
+  rf_res = FunctionalRandomForests(func_tab)
+  rf_res = read.csv('data/processed/functional_random_forests.csv')
+  sign_kos = GetTopKOs(rf_res)
+  sign_categories_df = FunctionalEnrichment(func_tab, sign_kos)
+  FunctionalGenomeStats(func_tab)
   FunctionalModels()
   FunctionalPlots()
   }
